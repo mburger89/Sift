@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .library(name: "SiftCore", targets: ["SiftCore"]),
         .library(name: "SiftPG", targets: ["SiftPG"]),
+        .library(name: "SiftDocker", targets: ["SiftDocker"]),
         .executable(name: "siftpg-probe", targets: ["siftpg-probe"]),
     ],
     targets: [
@@ -16,10 +17,16 @@ let package = Package(
             providers: [.brew(["libpq"]), .apt(["libpq-dev"])]
         ),
         .target(name: "SiftCore"),
-        .target(name: "SiftTestSupport", dependencies: ["SiftCore"]),
+        .target(name: "SiftDocker", dependencies: ["SiftCore"]),
+        .target(name: "SiftTestSupport", dependencies: ["SiftCore", "SiftDocker"]),
         .target(name: "SiftPG", dependencies: ["CLibPQ", "SiftCore"]),
         .executableTarget(name: "siftpg-probe", dependencies: ["SiftPG", "SiftCore"]),
         .testTarget(name: "SiftCoreTests", dependencies: ["SiftCore", "SiftTestSupport"]),
+        .testTarget(
+            name: "SiftDockerTests",
+            dependencies: ["SiftDocker", "SiftCore", "SiftTestSupport"],
+            resources: [.copy("Fixtures")]
+        ),
         .testTarget(name: "SiftPGTests", dependencies: ["SiftPG", "SiftCore"]),
     ],
     swiftLanguageModes: [.v6]
