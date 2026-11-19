@@ -19,7 +19,7 @@ let package = Package(
         ),
         .target(name: "SiftCore"),
         .target(name: "SiftDocker", dependencies: ["SiftCore"]),
-        .target(name: "SiftTestSupport", dependencies: ["SiftCore", "SiftDocker"]),
+        .target(name: "SiftTestSupport", dependencies: ["SiftCore", "SiftPG", "SiftDocker"]),
         .target(name: "SiftPG", dependencies: ["CLibPQ", "SiftCore"]),
         .target(name: "SiftLayout"),
         .executableTarget(name: "siftpg-probe", dependencies: ["SiftPG", "SiftCore"]),
@@ -29,7 +29,7 @@ let package = Package(
             dependencies: ["SiftDocker", "SiftCore", "SiftTestSupport"],
             resources: [.copy("Fixtures")]
         ),
-        .testTarget(name: "SiftPGTests", dependencies: ["SiftPG", "SiftCore"]),
+        .testTarget(name: "SiftPGTests", dependencies: ["SiftPG", "SiftCore", "SiftTestSupport"]),
         .testTarget(name: "SiftLayoutTests", dependencies: ["SiftLayout"]),
     ],
     swiftLanguageModes: [.v6]
