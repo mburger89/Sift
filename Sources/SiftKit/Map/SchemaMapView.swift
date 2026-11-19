@@ -21,6 +21,12 @@ struct SchemaMapView: Component {
             .overlay(alignment: .topLeading) {
                 ZStack(alignment: .topLeading) { MapContentLayer(map: map) }
             }
+            .overlay(alignment: .topTrailing) {
+                ZStack(alignment: .topTrailing) { MapSearchResults(map: map) }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                ZStack(alignment: .bottomTrailing) { MapMinimap(map: map) }.padding(Edges(all: Pixels(12)))
+            }
             .overlay(alignment: .bottomLeading) {
                 ZStack(alignment: .bottomLeading) { MapEdgeInfoStrip(map: map) }
             }

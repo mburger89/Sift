@@ -42,6 +42,9 @@ final class MapModel {
     private(set) var filter = MapFilter()
 
     @ObservationIgnored private(set) var index = SpatialIndex(rects: [:])
+    /// The layout as of the last load or drop. Not observed: the minimap reads it, keyed by `positionsVersion`, so a
+    /// card dragged step by step does not rebuild it.
+    @ObservationIgnored private(set) var committedLayout: MapLayout?
     @ObservationIgnored private let store: any MapPositionsStoring
     @ObservationIgnored private var identity = ""
     @ObservationIgnored private var pins: [RelationID: LayoutPoint] = [:]
@@ -93,6 +96,7 @@ final class MapModel {
 
     private func install(_ new: MapLayout) {
         layout = new
+        committedLayout = new
         positionsVersion += 1
         dragged = nil
         liveEdges = []
@@ -135,8 +139,15 @@ final class MapModel {
     func setViewSize(_ size: Size<Pixels>, scale: Float) {
         self.scale = scale
         guard size != viewSize else { return }
+        let old = viewSize
         viewSize = size
-        if fitPending, layout != nil { fit(size) } else { refreshView() }
+        if fitPending, layout != nil {
+            fit(size)
+        } else {
+            // A resize keeps what is at the centre of the map at the centre.
+            if let old { geometry.panBy((size.width.value - old.width.value) / 2, (size.height.value - old.height.value) / 2, scale: scale) }
+            refreshView()
+        }
     }
 
     func fit() { if let viewSize { fit(viewSize) } }
@@ -180,6 +191,17 @@ final class MapModel {
         geometry = MapGeometry.flyTo(layout.rect(of: node), in: size, scale: scale)
         selected = id
         refreshView()
+    }
+
+    func flyTo(_ id: RelationID) {
+        if let viewSize { flyTo(id, size: viewSize) }
+        search = ""
+    }
+
+    /// Return in the search field: flies to the best match.
+    func flyToBestMatch() {
+        guard let layout, let best = MapSearch.matches(search, in: layout.graph.ids, limit: 1).first else { return }
+        flyTo(best)
     }
 
     func flyToSelection() { if let selected, let viewSize { flyTo(selected, size: viewSize) } }
@@ -297,6 +319,7 @@ final class MapModel {
         dragged = nil
         dragEdgeSet = []
         liveEdges = []
+        committedLayout = layout
         positionsVersion += 1
         store.save(identity: identity, positions: storedPins())
         rebuildDerived()

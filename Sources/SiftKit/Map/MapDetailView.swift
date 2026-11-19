@@ -6,11 +6,13 @@ struct MapDetailView: Component {
     let model: AppModel
     let key: ConnectionKey
     let session: DatabaseSession
+    @FocusState private var searchFocused: Bool
 
     var content: some ElementGroup {
         let map = model.map(for: key)
         VStack(alignment: .leading, spacing: 0) {
             ConnectionBanner(model: model, key: key)
+            MapToolbar(model: model, map: map, focus: $searchFocused)
             SchemaMapView(model: model, map: map, key: key)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
