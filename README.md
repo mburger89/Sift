@@ -12,6 +12,8 @@ Design: [docs/superpowers/specs/2026-11-18-sift-design.md](docs/superpowers/spec
 
 ### Building
 
+Sift builds against a sibling checkout of [MetalUI](https://github.com/mburger89/MetalUI): `Package.swift` depends on `../MetalUI` by path, so clone both into one folder (CI pins the MetalUI commit in `METALUI_REF` at the top of `.github/workflows/ci.yml`). On Linux and Windows MetalUI's `SDL` and `AccessKit` traits are on, so SDL3 and AccessKit's C bindings must be installed too (see below). `swift run Sift` opens the window.
+
 libpq must be installed.
 
 - **macOS:** `brew install libpq`. It is keg-only, so build with `PKG_CONFIG_PATH=$(brew --prefix libpq)/lib/pkgconfig swift build`. The phase-0 work installed it for testing; you may keep it or remove it with `brew uninstall libpq`.
@@ -27,6 +29,12 @@ libpq must be installed.
   swift build -Xcc "-I$stage\include" -Xlinker "-L$stage\lib"
   swift test  -Xcc "-I$stage\include" -Xlinker "-L$stage\lib"
   ```
+
+SDL3 and AccessKit (Linux and Windows only; macOS uses AppKit):
+
+- **Linux:** build SDL 3.4.16 from source into `/usr` (Ubuntu 24.04 ships only SDL2), then `python3 ../MetalUI/Backends/SDL/scripts/fetch-accesskit.py --prefix /usr`.
+- **Windows:** unpack `SDL3-devel-3.4.16-VC.zip`, put its `lib\x64` on `PATH`, and add `-Xcc -I<SDL3>\include -Xswiftc -L<SDL3>\lib\x64` plus the flags `python ..\MetalUI\Backends\SDL\scripts\fetch-accesskit.py --print-flags` prints (one per line) to every `swift` call, next to the libpq flags.
+- **Headless:** `METALUI_SDL_HEADLESS=1` hides the window; the UI tests never need SDL, they run in a headless `TestWindow`.
 
 ### Running
 
