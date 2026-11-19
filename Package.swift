@@ -18,6 +18,7 @@ let package = Package(
         .target(name: "SiftCore"),
         .target(name: "SiftPG", dependencies: ["CLibPQ", "SiftCore"]),
         .executableTarget(name: "siftpg-probe", dependencies: ["SiftPG", "SiftCore"]),
+        .testTarget(name: "SiftCoreTests", dependencies: ["SiftCore"]),
         .testTarget(name: "SiftPGTests", dependencies: ["SiftPG", "SiftCore"]),
     ],
     swiftLanguageModes: [.v6]
