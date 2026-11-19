@@ -23,7 +23,7 @@ jobs:
         "$PGBIN/initdb" -D "$RUNNER_TEMP/pgdata" -A trust -U postgres
         "$PGBIN/pg_ctl" -D "$RUNNER_TEMP/pgdata" -o "-p 55432 -c listen_addresses=127.0.0.1" -l "$RUNNER_TEMP/pg.log" -w start
     - run: swift build
-    - run: swift test
+    - run: swift test --no-parallel
     - run: swift run siftpg-probe
     - name: Stop Postgres
       if: always()
@@ -50,7 +50,7 @@ jobs:
     - name: Install libpq
       run: apt-get update && apt-get install -y libpq-dev pkg-config
     - run: swift build
-    - run: swift test
+    - run: swift test --no-parallel
     - run: swift run siftpg-probe
 
   windows:
@@ -109,7 +109,7 @@ jobs:
         exit $LASTEXITCODE
     - name: Test
       run: |
-        swift test -Xcc "-IC:\pqdev\include" -Xlinker "-LC:\pqdev\lib"
+        swift test --no-parallel -Xcc "-IC:\pqdev\include" -Xlinker "-LC:\pqdev\lib"
         exit $LASTEXITCODE
     - name: Probe
       run: |
