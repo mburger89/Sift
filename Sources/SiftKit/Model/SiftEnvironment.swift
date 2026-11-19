@@ -9,16 +9,20 @@ public struct SiftEnvironment: Sendable {
     public var discovery: any DockerDiscovering
     public var connector: any DatabaseConnecting
     public var clock: any SiftClock
+    /// Where dragged tables' positions are remembered, per database.
+    public var mapPositions: any MapPositionsStoring
 
     public init(
         connections: any ConnectionStoring, credentials: any CredentialStore, discovery: any DockerDiscovering,
-        connector: any DatabaseConnecting, clock: any SiftClock
+        connector: any DatabaseConnecting, clock: any SiftClock,
+        mapPositions: any MapPositionsStoring
     ) {
         self.connections = connections
         self.credentials = credentials
         self.discovery = discovery
         self.connector = connector
         self.clock = clock
+        self.mapPositions = mapPositions
     }
 
     /// The real thing: the app's support directory, in-memory passwords, Docker or OrbStack, libpq.
@@ -27,6 +31,7 @@ public struct SiftEnvironment: Sendable {
             platform: AppPaths.currentPlatform, env: ProcessInfo.processInfo.environment, home: NSHomeDirectory())
         return SiftEnvironment(
             connections: ConnectionStore(directory: directory), credentials: InMemoryCredentialStore(),
-            discovery: DockerDiscovery(), connector: PGConnector(), clock: SystemClock())
+            discovery: DockerDiscovery(), connector: PGConnector(), clock: SystemClock(),
+            mapPositions: MapPositionsStore(directory: directory))
     }
 }

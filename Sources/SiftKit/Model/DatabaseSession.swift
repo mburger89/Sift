@@ -29,6 +29,8 @@ public final class DatabaseSession {
     public let title: String
     public private(set) var state: State = .connecting
     public private(set) var snapshot: SchemaSnapshot?
+    /// The database the session is (or was last) connected to: with the key, what a map's pins belong to.
+    public private(set) var database: String?
     public private(set) var rows: [RelationID: Loadable<ResultPage>] = [:]
     public private(set) var exactCounts: [RelationID: Loadable<Int64>] = [:]
     /// Always true: every session Sift opens is read-only, and a server that will not enforce it is refused.
@@ -53,6 +55,9 @@ public final class DatabaseSession {
         self.clock = clock
         self.targetProvider = targetProvider
     }
+
+    /// What the map keys its remembered positions by: `saved:<uuid>:<db>` or `container:<name>:<db>` (decision D22).
+    public var mapIdentity: String? { database.map { "\(key.token):\($0)" } }
 
     /// The seconds to wait before attempt number `attempt` (0-based): 0.5, 1, 2, 4, then 5.
     nonisolated static func backoff(attempt: Int) -> Double {
@@ -79,6 +84,10 @@ public final class DatabaseSession {
 
     private func open(refreshing: Bool) async throws -> (any DatabaseSource, SchemaSnapshot) {
         let target = try await targetProvider(refreshing)
+        switch target {
+        case .saved(let saved, _): database = saved.database
+        case .discovered(let found): database = found.database
+        }
         let opened = try await connector.connect(target)
         do {
             return (opened, try await opened.snapshot())
