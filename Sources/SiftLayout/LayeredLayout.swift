@@ -57,18 +57,12 @@ public enum LayeredLayout {
         canonical: Canonical, expansion: Dummies.Expansion, layers: [[Int]], options: LayoutOptions
     ) -> (positions: [LayoutPoint], points: [LayoutPoint]) {
         let total = expansion.rank.count
+        func height(_ node: Int) -> Double { node < expansion.realCount ? canonical.heights[node] : 0 }
         let rankCount = (expansion.rank.max() ?? -1) + 1
 
-        func height(_ node: Int) -> Double { node < expansion.realCount ? canonical.heights[node] : 0 }
-        var center = [Double](repeating: 0, count: total)
-        for layer in layers {
-            var y = 0.0
-            for (index, node) in layer.enumerated() {
-                if index > 0 { y += (height(layer[index - 1]) + height(node)) / 2 + options.nodeGap }
-                center[node] = y
-            }
-        }
-
+        var center = Placement.assign(
+            order: layers, heights: (0..<total).map(height), predecessors: expansion.predecessors,
+            successors: expansion.successors, gap: options.nodeGap, passes: options.placementPasses)
         var top = Double.infinity
         for node in 0..<total { top = min(top, node < expansion.realCount ? center[node] - height(node) / 2 : center[node]) }
         for node in 0..<total { center[node] -= top }
