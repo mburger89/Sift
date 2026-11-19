@@ -16,8 +16,10 @@ let package = Package(
             providers: [.brew(["libpq"]), .apt(["libpq-dev"])]
         ),
         .target(name: "SiftCore"),
+        .target(name: "SiftTestSupport", dependencies: ["SiftCore"]),
         .target(name: "SiftPG", dependencies: ["CLibPQ", "SiftCore"]),
         .executableTarget(name: "siftpg-probe", dependencies: ["SiftPG", "SiftCore"]),
+        .testTarget(name: "SiftCoreTests", dependencies: ["SiftCore", "SiftTestSupport"]),
         .testTarget(name: "SiftPGTests", dependencies: ["SiftPG", "SiftCore"]),
     ],
     swiftLanguageModes: [.v6]
