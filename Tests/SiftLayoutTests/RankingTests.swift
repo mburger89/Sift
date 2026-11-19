@@ -13,7 +13,7 @@ import Testing
         #expect(result.stats.dummyNodes == 1)
         let route = try #require(result.routes[2])
         #expect(route.count == 1)
-        let bend = route[0]
+        let bend = try #require(route.first)
         #expect(bend.x >= 320 && bend.x <= 520)
         let middle = try #require(result.positions[1])
         #expect(bend.y < middle.y || bend.y > middle.y + 100)
