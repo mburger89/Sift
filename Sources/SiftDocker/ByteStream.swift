@@ -116,6 +116,7 @@ public final class UnixSocketStream: ByteStream, @unchecked Sendable {
 
 /// A Windows named pipe opened for overlapped I/O, so each read and write can time out.
 public final class NamedPipeStream: ByteStream, @unchecked Sendable {
+    private enum Transfer: Equatable { case done(DWORD), brokenPipe, notConnected }
     private var handle: HANDLE?
     private let timeoutMilliseconds: DWORD
 
@@ -153,14 +154,19 @@ public final class NamedPipeStream: ByteStream, @unchecked Sendable {
         var offset = 0
         while offset < bytes.count {
             var chunk = Array(bytes[offset...])
-            let done = try transfer(handle) { overlapped in
-                var count: DWORD = 0
-                let ok = chunk.withUnsafeMutableBytes {
-                    WriteFile(handle, $0.baseAddress, DWORD($0.count), &count, overlapped)
+            var result = Transfer.notConnected
+            // A server that has not yet called ConnectNamedPipe answers 233; give it a moment.
+            for _ in 0..<200 where result == .notConnected {
+                result = try transfer(handle) { overlapped in
+                    var count: DWORD = 0
+                    let ok = chunk.withUnsafeMutableBytes {
+                        WriteFile(handle, $0.baseAddress, DWORD($0.count), &count, overlapped)
+                    }
+                    return ok
                 }
-                return ok
+                if result == .notConnected { Sleep(10) }
             }
-            guard let done else { throw .connectFailed("broken pipe") }
+            guard case .done(let done) = result else { throw .connectFailed("pipe not connected or broken") }
             offset += Int(done)
         }
     }
@@ -168,14 +174,14 @@ public final class NamedPipeStream: ByteStream, @unchecked Sendable {
     public func read(maxCount: Int) throws(DockerError) -> [UInt8] {
         guard let handle else { return [] }
         var buffer = [UInt8](repeating: 0, count: maxCount)
-        let done = try transfer(handle) { overlapped in
+        let result = try transfer(handle) { overlapped in
             var count: DWORD = 0
             let ok = buffer.withUnsafeMutableBytes {
                 ReadFile(handle, $0.baseAddress, DWORD($0.count), &count, overlapped)
             }
             return ok
         }
-        guard let done else { return [] }  // broken pipe: the daemon closed its end
+        guard case .done(let done) = result else { return [] }  // broken or closed: the daemon is done
         return Array(buffer[0..<Int(done)])
     }
 
@@ -183,7 +189,7 @@ public final class NamedPipeStream: ByteStream, @unchecked Sendable {
     private func transfer(
         _ handle: HANDLE,
         _ start: (UnsafeMutablePointer<OVERLAPPED>) -> Bool
-    ) throws(DockerError) -> DWORD? {
+    ) throws(DockerError) -> Transfer {
         var overlapped = OVERLAPPED()
         guard let event = CreateEventW(nil, true, false, nil) else { throw .connectFailed("CreateEventW failed") }
         defer { CloseHandle(event) }
@@ -191,7 +197,8 @@ public final class NamedPipeStream: ByteStream, @unchecked Sendable {
         var transferred: DWORD = 0
         if !start(&overlapped) {
             let code = GetLastError()
-            if code == DWORD(ERROR_BROKEN_PIPE) { return nil }
+            if code == DWORD(ERROR_BROKEN_PIPE) { return .brokenPipe }
+            if code == DWORD(ERROR_PIPE_NOT_CONNECTED) { return .notConnected }
             guard code == DWORD(ERROR_IO_PENDING) else { throw .connectFailed("pipe i/o failed (\(code))") }
             if WaitForSingleObject(event, timeoutMilliseconds) == DWORD(WAIT_TIMEOUT) {
                 CancelIoEx(handle, &overlapped)
@@ -201,10 +208,11 @@ public final class NamedPipeStream: ByteStream, @unchecked Sendable {
         }
         if !GetOverlappedResult(handle, &overlapped, &transferred, false) {
             let code = GetLastError()
-            if code == DWORD(ERROR_BROKEN_PIPE) { return nil }
+            if code == DWORD(ERROR_BROKEN_PIPE) { return .brokenPipe }
+            if code == DWORD(ERROR_PIPE_NOT_CONNECTED) { return .notConnected }
             throw .connectFailed("pipe i/o failed (\(code))")
         }
-        return transferred
+        return .done(transferred)
     }
 
     public func close() {
