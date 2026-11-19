@@ -29,6 +29,7 @@ struct MapWorld: Component, @MainActor Equatable {
             MapEdgeLayer(map: map)
             MapCardLayer(map: map)
             MapSpotlightLayer(map: map)
+            MapLiveEdgesLayer(map: map)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -74,6 +75,21 @@ struct MapCardLayer: Component {
                         .equatable()
                     }
                 }
+            }
+        }
+    }
+}
+
+/// The edges of the card being dragged, drawn live: they are not in the tiles while the card moves.
+struct MapLiveEdgesLayer: Component {
+    let map: MapModel
+
+    var content: some ElementGroup {
+        ZStack(alignment: .topLeading) {
+            if !map.liveEdges.isEmpty {
+                SpotEdgesView(
+                    pieces: map.liveEdges, width: 1.5 * map.edgeTiles.tileSize / EdgeTiles.base, color: .mapEdge)
+                    .equatable()
             }
         }
     }

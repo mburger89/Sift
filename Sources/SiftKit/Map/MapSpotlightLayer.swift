@@ -61,30 +61,43 @@ struct MapSpotlightLayer: Component {
     }
 }
 
-/// Some edges drawn in the accent colour above the scrim, as one `Path` in canvas units.
+/// Some edges drawn in one colour above the scrim, a `Path` per piece. A piece is at most half a tile, so a
+/// stroke that moves (a dragged card's edges) rasterizes the pieces it covers, never the box around a long edge.
 struct SpotEdgesView: Component, @MainActor Equatable {
     let pieces: [EdgePiece]
     let width: Double
+    var color: Color = .mapAccent
 
     var content: some ElementGroup {
-        if let first = pieces.first {
-            let box = pieces.dropFirst().reduce(first.bounds) { $0.union($1.bounds) }.grown(by: 4, 4)
-            let path = Path { p in
-                var last: LayoutPoint?
-                func point(_ q: LayoutPoint) -> Point<Pixels> { Point(x: Pixels(Float(q.x - box.x)), y: Pixels(Float(q.y - box.y))) }
-                for piece in pieces {
-                    if last != piece.p0 { p.move(to: point(piece.p0)) }
-                    p.addCurve(to: point(piece.p1), control1: point(piece.c1), control2: point(piece.c2))
-                    last = piece.p1
-                }
+        ZStack(alignment: .topLeading) {
+            ForEach(Array(pieces.enumerated()), id: \.offset) { _, piece in
+                PieceStroke(piece: piece, width: width, color: color).equatable()
             }
-            path.stroke(.mapAccent, lineWidth: Pixels(Float(width)))
-                .frame(width: Pixels(Float(box.width)), height: Pixels(Float(box.height)), alignment: .topLeading)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-                .offset(x: Pixels(Float(box.x)), y: Pixels(Float(box.y)))
         }
     }
 
-    nonisolated static func == (l: Self, r: Self) -> Bool { l.pieces == r.pieces && l.width == r.width }
+    nonisolated static func == (l: Self, r: Self) -> Bool { l.pieces == r.pieces && l.width == r.width && l.color == r.color }
+}
+
+/// One piece of an edge, in canvas units, as a stroked `Path` in the box around it.
+struct PieceStroke: Component, @MainActor Equatable {
+    let piece: EdgePiece
+    let width: Double
+    let color: Color
+
+    var content: some ElementGroup {
+        let box = piece.bounds.grown(by: width + 2, width + 2)
+        let path = Path { p in
+            func point(_ q: LayoutPoint) -> Point<Pixels> { Point(x: Pixels(Float(q.x - box.x)), y: Pixels(Float(q.y - box.y))) }
+            p.move(to: point(piece.p0))
+            p.addCurve(to: point(piece.p1), control1: point(piece.c1), control2: point(piece.c2))
+        }
+        path.stroke(color, lineWidth: Pixels(Float(width)))
+            .frame(width: Pixels(Float(box.width)), height: Pixels(Float(box.height)), alignment: .topLeading)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+            .offset(x: Pixels(Float(box.x)), y: Pixels(Float(box.y)))
+    }
+
+    nonisolated static func == (l: Self, r: Self) -> Bool { l.piece == r.piece && l.width == r.width && l.color == r.color }
 }

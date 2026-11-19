@@ -38,6 +38,12 @@ struct SchemaMapView: Component {
         .gesture(SpatialTapGesture().onEnded { (tap: SpatialTapGesture.Value) in
             Self.tap(tap, map, model: model, key: key)
         })
+        .gesture(DragGesture(minimumDistance: Pixels(3))
+            .onChanged { (value: DragGesture.Value) in
+                map.dragChanged(start: value.startLocation, translation: value.translation, scale: scale)
+            }
+            .onEnded { _ in map.dragEnded() }
+            .onCancelled { map.dragEnded() })
         .focusable(true, interactions: .edit)
         .hoverKeyRegion()
         .onKeyPress(.return) {

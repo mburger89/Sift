@@ -50,6 +50,13 @@ final class MapModel {
     @ObservationIgnored private var tileBucket = 1.0
     @ObservationIgnored private var dragEdgeSet: Set<Int> = []
     @ObservationIgnored private var scale: Float = 1
+    @ObservationIgnored private var pointer: PointerDrag?
+
+    /// What a drag that is under way does: moves a card, or pans.
+    private enum PointerDrag {
+        case card(RelationID, from: LayoutPoint)
+        case pan(applied: Size<Pixels>)
+    }
 
     init(store: any MapPositionsStoring) { self.store = store }
 
@@ -207,6 +214,8 @@ final class MapModel {
     // MARK: Hover and selection
 
     func hover(at screen: Point<Pixels>) {
+        // The pointer moves cards and the map while it is down: nothing is spotlit meanwhile.
+        guard pointer == nil else { return }
         let id = layout.flatMap { layout in index.hit(geometry.toCanvas(screen)).map { layout.graph.ids[$0] } }
         if id != hovered { hovered = id }
     }
@@ -228,9 +237,41 @@ final class MapModel {
 
     // MARK: Dragging
 
+    /// A drag of the surface, from the press at `start` to where it is now (`translation` from the press). It moves
+    /// the card under the press, or pans when the press was on empty canvas.
+    func dragChanged(start: Point<Pixels>, translation: Size<Pixels>, scale: Float) {
+        self.scale = scale
+        if pointer == nil {
+            if let id = table(at: start), let layout, let node = layout.graph.node(of: id) {
+                pointer = .card(id, from: layout.positions[node])
+                beginDrag(id)
+            } else {
+                pointer = .pan(applied: Size(width: Pixels(0), height: Pixels(0)))
+            }
+        }
+        switch pointer {
+        case .card(let id, let from)?:
+            drag(id, to: LayoutPoint(
+                x: from.x + Double(translation.width.value) / geometry.zoom,
+                y: from.y + Double(translation.height.value) / geometry.zoom))
+        case .pan(let applied)?:
+            panBy(translation.width.value - applied.width.value, translation.height.value - applied.height.value, scale: scale)
+            pointer = .pan(applied: translation)
+        case nil:
+            break
+        }
+    }
+
+    /// The press is released (or cancelled).
+    func dragEnded() {
+        if case .card? = pointer { endDrag() }
+        pointer = nil
+    }
+
     func beginDrag(_ id: RelationID) {
         guard let layout, let node = layout.graph.node(of: id), dragged == nil else { return }
         dragged = id
+        hovered = nil
         dragEdgeSet = Set(layout.graph.graph.edges.indices.filter {
             let edge = layout.graph.graph.edges[$0]
             return (edge.from == node || edge.to == node) && !layout.selfLoops.contains($0)
