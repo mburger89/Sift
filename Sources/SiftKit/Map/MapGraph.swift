@@ -76,6 +76,10 @@ struct MapGraph: Equatable, Sendable {
     /// The key columns shown on each card, by node.
     var keyColumns: [[String]]
     var index: [RelationID: Int]
+    /// For each edge, the first column of the key on each side (where the edge meets its cards) and its caption.
+    var edgeFromColumn: [String] = []
+    var edgeToColumn: [String] = []
+    var edgeLabel: [String] = []
 
     func node(of id: RelationID) -> Int? { index[id] }
 }
@@ -105,14 +109,21 @@ enum MapGraphBuilder {
         }
         var edges: [LayoutGraph.Edge] = []
         var edgeFK: [ForeignKeyInfo.ID] = []
+        var fromColumn: [String] = [], toColumn: [String] = [], label: [String] = []
         for foreignKey in snapshot.foreignKeys {
             guard let from = index[foreignKey.from], let to = index[foreignKey.to] else { continue }
             edges.append(LayoutGraph.Edge(from: from, to: to))
             edgeFK.append(foreignKey.id)
+            fromColumn.append(foreignKey.fromColumns.first ?? "")
+            toColumn.append(foreignKey.toColumns.first ?? "")
+            label.append(
+                "\(foreignKey.from.name).\(foreignKey.fromColumns.joined(separator: ", ")) → "
+                    + "\(foreignKey.to.name).\(foreignKey.toColumns.joined(separator: ", "))")
         }
         return MapGraph(
             graph: LayoutGraph(nodes: nodes, edges: edges), ids: ids, edgeFK: edgeFK, joinTables: joinTables,
-            keyColumns: keyColumns, index: index)
+            keyColumns: keyColumns, index: index, edgeFromColumn: fromColumn, edgeToColumn: toColumn,
+            edgeLabel: label)
     }
 
     /// A table that only links others: two or more foreign keys, and every column is in the primary key or a foreign key.
