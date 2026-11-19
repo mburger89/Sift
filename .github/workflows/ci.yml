@@ -5,13 +5,35 @@ on:
     branches: [main]
   pull_request:
 
+# MetalUI is checked out next to Sift so that `path: "../MetalUI"` in Package.swift resolves as it
+# does on a developer's machine. It is pinned by SHA: a MetalUI change cannot turn Sift red, and a
+# Sift PR that needs a MetalUI fix bumps this line.
+env:
+  METALUI_REF: a3e04eadc7bd166d7f97c5f2e376a4b2db40797c
+  SDL_VERSION: 3.4.16
+
 jobs:
   macos:
     runs-on: xcode-27
+    defaults:
+      run:
+        working-directory: Sift
     env:
       SIFT_PG_URL: postgresql://postgres@127.0.0.1:55432/postgres
     steps:
     - uses: actions/checkout@v7
+      with:
+        path: Sift
+    - uses: actions/checkout@v7
+      with:
+        repository: mburger89/MetalUI
+        ref: ${{ env.METALUI_REF }}
+        path: MetalUI
+    - uses: actions/cache@v4
+      with:
+        path: Sift/.build
+        key: build-${{ runner.os }}-${{ env.METALUI_REF }}-${{ hashFiles('Sift/Package.swift') }}
+        restore-keys: build-${{ runner.os }}-${{ env.METALUI_REF }}-
     - name: Install libpq and a Postgres server
       run: |
         export HOMEBREW_NO_AUTO_UPDATE=1
@@ -22,8 +44,8 @@ jobs:
         PGBIN="$(brew --prefix postgresql@17)/bin"
         "$PGBIN/initdb" -D "$RUNNER_TEMP/pgdata" -A trust -U postgres
         "$PGBIN/pg_ctl" -D "$RUNNER_TEMP/pgdata" -o "-p 55432 -c listen_addresses=127.0.0.1" -l "$RUNNER_TEMP/pg.log" -w start
-    - run: swift build
-    - run: swift test --no-parallel
+    - run: swift build --build-tests
+    - run: swift test --skip-build --no-parallel
     - run: swift run siftpg-probe
     - name: Stop Postgres
       if: always()
@@ -33,6 +55,9 @@ jobs:
   linux:
     runs-on: ubuntu-24.04
     container: swift:6.4-noble
+    defaults:
+      run:
+        working-directory: Sift
     services:
       postgres:
         image: postgres:17
@@ -45,12 +70,46 @@ jobs:
           --health-retries 10
     env:
       SIFT_PG_URL: postgresql://postgres:sift@postgres:5432/postgres
+      SDL_VIDEO_DRIVER: offscreen
     steps:
     - uses: actions/checkout@v7
-    - name: Install libpq
-      run: apt-get update && apt-get install -y libpq-dev pkg-config
-    - run: swift build
-    - run: swift test --no-parallel
+      with:
+        path: Sift
+    - uses: actions/checkout@v7
+      with:
+        repository: mburger89/MetalUI
+        ref: ${{ env.METALUI_REF }}
+        path: MetalUI
+    - name: Install build tools and libpq
+      run: apt-get update && apt-get install -y --no-install-recommends libpq-dev pkg-config cmake ninja-build python3 curl ca-certificates git
+    # Ubuntu 24.04 ships only SDL2, so SDL3 is built from source once and cached. No test needs SDL:
+    # `TestWindow` is headless. It is needed because `swift build --build-tests` links the Sift executable.
+    - uses: actions/cache@v4
+      id: sdl3
+      with:
+        path: /opt/sdl3
+        key: sdl3-${{ env.SDL_VERSION }}-noble-x86_64
+    - name: Build SDL3
+      if: steps.sdl3.outputs.cache-hit != 'true'
+      run: |
+        git clone --depth 1 --branch release-$SDL_VERSION https://github.com/libsdl-org/SDL.git /tmp/SDL
+        cmake -S /tmp/SDL -B /tmp/SDL/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/sdl3 \
+          -DSDL_AUDIO=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF
+        cmake --build /tmp/SDL/build
+        cmake --install /tmp/SDL/build
+    # Onto the compiler's default paths: the importer ignores CPATH and gold skips /usr/local/lib (PX-I).
+    - name: Install SDL3 and AccessKit under /usr
+      run: |
+        cp -a /opt/sdl3/. /usr/
+        ldconfig
+        python3 ../MetalUI/Backends/SDL/scripts/fetch-accesskit.py --prefix /usr
+    - uses: actions/cache@v4
+      with:
+        path: Sift/.build
+        key: build-${{ runner.os }}-${{ env.METALUI_REF }}-${{ hashFiles('Sift/Package.swift') }}
+        restore-keys: build-${{ runner.os }}-${{ env.METALUI_REF }}-
+    - run: swift build --build-tests
+    - run: swift test --skip-build --no-parallel
     - run: swift run siftpg-probe
 
   windows:
@@ -58,10 +117,18 @@ jobs:
     defaults:
       run:
         shell: pwsh
+        working-directory: Sift
     env:
       SIFT_PG_URL: postgresql://postgres@127.0.0.1:55432/postgres
     steps:
     - uses: actions/checkout@v7
+      with:
+        path: Sift
+    - uses: actions/checkout@v7
+      with:
+        repository: mburger89/MetalUI
+        ref: ${{ env.METALUI_REF }}
+        path: MetalUI
     # The installer intermittently leaves `swift` off PATH (the action's
     # version check fails before any build); one retry after a pause.
     - id: setup-swift
@@ -103,17 +170,52 @@ jobs:
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         & "$env:PGHOME\bin\pg_ctl.exe" -D "$env:RUNNER_TEMP\pgdata" -o "-p 55432" -l "$env:RUNNER_TEMP\pg.log" -w start
         exit $LASTEXITCODE
+    - uses: actions/cache@v4
+      with:
+        path: |
+          ${{ runner.temp }}\sdl3.zip
+          MetalUI/Backends/SDL/.accesskit
+        key: downloads-${{ runner.os }}-sdl${{ env.SDL_VERSION }}-${{ hashFiles('MetalUI/Backends/SDL/scripts/fetch-accesskit.py') }}
+    - name: Install SDL3 (prebuilt VC package)
+      run: |
+        $zip = "$env:RUNNER_TEMP\sdl3.zip"
+        if (-not (Test-Path $zip)) {
+          Invoke-WebRequest "https://github.com/libsdl-org/SDL/releases/download/release-$env:SDL_VERSION/SDL3-devel-$env:SDL_VERSION-VC.zip" -OutFile $zip -MaximumRetryCount 10 -RetryIntervalSec 30
+        }
+        Expand-Archive $zip -DestinationPath $env:RUNNER_TEMP
+        $root = "$env:RUNNER_TEMP\SDL3-$env:SDL_VERSION"
+        "SDL3_INCLUDE=$root\include" >> $env:GITHUB_ENV
+        "SDL3_LIB=$root\lib\x64" >> $env:GITHUB_ENV
+        "$root\lib\x64" >> $env:GITHUB_PATH   # SDL3.dll at run time
+    - name: Fetch AccessKit
+      # One SwiftPM flag per line: -Xcc -I<include> -Xswiftc -L<lib> (PX-I item 2).
+      run: |
+        python ..\MetalUI\Backends\SDL\scripts\fetch-accesskit.py --print-flags > "$env:RUNNER_TEMP\accesskit-flags.txt"
+        if ($LASTEXITCODE) { exit $LASTEXITCODE }
+        Get-Content "$env:RUNNER_TEMP\accesskit-flags.txt"
+    - uses: actions/cache@v4
+      with:
+        path: Sift/.build
+        key: build-${{ runner.os }}-${{ env.METALUI_REF }}-${{ hashFiles('Sift/Package.swift') }}
+        restore-keys: build-${{ runner.os }}-${{ env.METALUI_REF }}-
+    # No pkg-config on Windows: three flag sources (libpq, SDL3, AccessKit) go to every swift call.
     - name: Build
       run: |
-        swift build -Xcc "-IC:\pqdev\include" -Xlinker "-LC:\pqdev\lib"
+        $flags = @("-Xcc", "-IC:\pqdev\include", "-Xlinker", "-LC:\pqdev\lib", "-Xcc", "-I$env:SDL3_INCLUDE", "-Xswiftc", "-L$env:SDL3_LIB") +
+                 @(Get-Content "$env:RUNNER_TEMP\accesskit-flags.txt")
+        swift build --build-tests @flags
         exit $LASTEXITCODE
     - name: Test
       run: |
-        swift test --no-parallel -Xcc "-IC:\pqdev\include" -Xlinker "-LC:\pqdev\lib"
+        $flags = @("-Xcc", "-IC:\pqdev\include", "-Xlinker", "-LC:\pqdev\lib", "-Xcc", "-I$env:SDL3_INCLUDE", "-Xswiftc", "-L$env:SDL3_LIB") +
+                 @(Get-Content "$env:RUNNER_TEMP\accesskit-flags.txt")
+        swift test --skip-build --no-parallel @flags
         exit $LASTEXITCODE
     - name: Probe
       run: |
-        swift run -Xcc "-IC:\pqdev\include" -Xlinker "-LC:\pqdev\lib" siftpg-probe
+        $flags = @("-Xcc", "-IC:\pqdev\include", "-Xlinker", "-LC:\pqdev\lib", "-Xcc", "-I$env:SDL3_INCLUDE", "-Xswiftc", "-L$env:SDL3_LIB") +
+                 @(Get-Content "$env:RUNNER_TEMP\accesskit-flags.txt")
+        swift run @flags siftpg-probe
         exit $LASTEXITCODE
     - name: Stop Postgres
       if: always()
