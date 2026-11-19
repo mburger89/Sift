@@ -15,16 +15,51 @@ struct SchemaMapView: Component {
         let scale = Float(displayScale)
         let map = map
         // The canvas is the surface and the world is laid over it: what is drawn never sizes the surface.
+        let model = model, key = key
         Color.mapCanvas
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .overlay(alignment: .topLeading) {
                 ZStack(alignment: .topLeading) { MapContentLayer(map: map) }
+            }
+            .overlay(alignment: .bottomLeading) {
+                ZStack(alignment: .bottomLeading) { MapEdgeInfoStrip(map: map) }
             }
             .clipped()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("map")
         .onGeometryChange(for: Size<Pixels>.self, of: { $0.size }) { map.setViewSize($0, scale: scale) }
         .onScrollWheel { Self.scroll($0, map, scale: scale) }
+        .onContinuousHover(coordinateSpace: .local) { phase in
+            switch phase {
+            case .active(let point): map.hover(at: point)
+            case .ended: map.clearHover()
+            }
+        }
+        .gesture(SpatialTapGesture().onEnded { (tap: SpatialTapGesture.Value) in
+            Self.tap(tap, map, model: model, key: key)
+        })
+        .focusable(true, interactions: .edit)
+        .hoverKeyRegion()
+        .onKeyPress(.return) {
+            guard let selected = map.selected else { return .ignored }
+            model.select(selected, in: key)
+            return .handled
+        }
+    }
+
+    /// A click selects the table (or the foreign key) under it; a double click opens the table.
+    @MainActor
+    static func tap(_ tap: SpatialTapGesture.Value, _ map: MapModel, model: AppModel, key: ConnectionKey) {
+        if let table = map.table(at: tap.location) {
+            map.selectedEdge = nil
+            map.selected = table
+            if tap.clickCount >= 2 { model.select(table, in: key) }
+        } else if let edge = map.edge(at: tap.location) {
+            map.selectedEdge = edge
+        } else {
+            map.selectedEdge = nil
+            map.selected = nil
+        }
     }
 
     /// ⌘ or Ctrl zooms by `2^(Δy/100)` about the pointer; anything else pans.

@@ -28,6 +28,7 @@ struct MapWorld: Component, @MainActor Equatable {
         ZStack(alignment: .topLeading) {
             MapEdgeLayer(map: map)
             MapCardLayer(map: map)
+            MapSpotlightLayer(map: map)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }

@@ -71,6 +71,22 @@ extension MapRig {
         throw RigError.timedOut("a quiet place on the map")
     }
 
+    /// The map's top-left corner in the window.
+    func mapOrigin() throws -> Point<Pixels> { try window.element(identifier: "map").frame.origin }
+
+    /// Where a canvas point is in the window.
+    func windowPoint(_ canvas: LayoutPoint) throws -> Point<Pixels> {
+        let screen = map.geometry.toScreen(canvas)
+        let origin = try mapOrigin()
+        return Point(x: origin.x + screen.x, y: origin.y + screen.y)
+    }
+
+    /// The centre of a table's card in the window.
+    func centre(of id: RelationID) throws -> Point<Pixels> {
+        let node = map.layout!.graph.node(of: id)!
+        return try windowPoint(map.layout!.rect(of: node).centre)
+    }
+
     /// The cards that exist in the accessibility tree (not their `.rows`, `.count` or `.selfLoop` children).
     func cardElements() throws -> [TestElement] {
         try window.elements {

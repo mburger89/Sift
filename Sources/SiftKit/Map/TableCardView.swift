@@ -17,11 +17,13 @@ struct TableCardView: Component, @MainActor Equatable {
     var isSelected = false
     /// What a screen reader says (see `MapCardLabel`).
     var label = ""
+    /// `map.card` for the card on the map, `map.spot` for its copy in the spotlight.
+    var idPrefix = "map.card"
 
     /// How many times a card's `content` has run, for the pins that a pan or a zoom step rebuilds none.
     @MainActor static var bodyCount = 0
 
-    var identifier: String { "map.card.\(relation.id.schema).\(relation.id.name)" }
+    var identifier: String { "\(idPrefix).\(relation.id.schema).\(relation.id.name)" }
 
     var content: some ElementGroup {
         let _ = Self.countBody()
@@ -29,7 +31,7 @@ struct TableCardView: Component, @MainActor Equatable {
         let w = Pixels(Float(size.w)), h = Pixels(Float(size.h))
         ZStack(alignment: .topLeading) {
             VStack(alignment: .leading, spacing: 0) {
-                CardHeader(relation: relation, lod: lod, isJoin: isJoin)
+                CardHeader(relation: relation, lod: lod, isJoin: isJoin, identifier: identifier)
                 if lod == .full, !keyColumns.isEmpty {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(keyColumns, id: \.self) { name in
@@ -55,6 +57,7 @@ struct TableCardView: Component, @MainActor Equatable {
     nonisolated static func == (l: Self, r: Self) -> Bool {
         l.relation == r.relation && l.keyColumns == r.keyColumns && l.origin == r.origin && l.lod == r.lod
             && l.isJoin == r.isJoin && l.hasSelfLoop == r.hasSelfLoop && l.isSelected == r.isSelected && l.label == r.label
+            && l.idPrefix == r.idPrefix
     }
 }
 
@@ -71,6 +74,7 @@ struct CardHeader: Component {
     let relation: RelationInfo
     let lod: MapLOD
     let isJoin: Bool
+    let identifier: String
 
     var content: some ElementGroup {
         let id = relation.id
@@ -84,7 +88,7 @@ struct CardHeader: Component {
                     if isJoin { JoinBadge() }
                 }
                 Text(verbatim: relation.rowEstimate.displayText).font(size: 11).foregroundColor(.secondary).lineLimit(1)
-                    .accessibilityIdentifier("map.card.\(id.schema).\(id.name).count")
+                    .accessibilityIdentifier("\(identifier).count")
             case .full:
                 HStack(spacing: Pixels(6)) {
                     Text(verbatim: id.name).font(size: 14).lineLimit(1)
