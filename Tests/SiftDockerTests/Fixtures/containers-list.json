@@ -1,0 +1,63 @@
+[
+  {
+    "Id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "Image": "postgres:16",
+    "Names": [
+      "/shop-db"
+    ],
+    "Ports": [
+      {
+        "IP": "0.0.0.0",
+        "PrivatePort": 5432,
+        "PublicPort": 55432,
+        "Type": "tcp"
+      },
+      {
+        "IP": "::",
+        "PrivatePort": 5432,
+        "PublicPort": 55432,
+        "Type": "tcp"
+      }
+    ],
+    "State": "running"
+  },
+  {
+    "Id": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "Image": "redis:7",
+    "Names": [
+      "/cache"
+    ],
+    "Ports": [
+      {
+        "PrivatePort": 6379,
+        "Type": "tcp"
+      }
+    ],
+    "State": "running"
+  },
+  {
+    "Id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "Image": "postgis/postgis:16-3.4",
+    "Names": [
+      "/old-db"
+    ],
+    "Ports": [],
+    "State": "exited"
+  },
+  {
+    "Id": "9999999999999999999999999999999999999999999999999999999999999999",
+    "Image": "dpage/pgadmin4",
+    "Names": [
+      "/admin"
+    ],
+    "Ports": [
+      {
+        "IP": "0.0.0.0",
+        "PrivatePort": 80,
+        "PublicPort": 8080,
+        "Type": "tcp"
+      }
+    ],
+    "State": "running"
+  }
+]

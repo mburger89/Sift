@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .library(name: "SiftCore", targets: ["SiftCore"]),
         .library(name: "SiftPG", targets: ["SiftPG"]),
+        .library(name: "SiftDocker", targets: ["SiftDocker"]),
         .library(name: "SiftLayout", targets: ["SiftLayout"]),
         .executable(name: "siftpg-probe", targets: ["siftpg-probe"]),
     ],
@@ -17,11 +18,17 @@ let package = Package(
             providers: [.brew(["libpq"]), .apt(["libpq-dev"])]
         ),
         .target(name: "SiftCore"),
-        .target(name: "SiftTestSupport", dependencies: ["SiftCore", "SiftPG"]),
+        .target(name: "SiftDocker", dependencies: ["SiftCore"]),
+        .target(name: "SiftTestSupport", dependencies: ["SiftCore", "SiftPG", "SiftDocker"]),
         .target(name: "SiftPG", dependencies: ["CLibPQ", "SiftCore"]),
         .target(name: "SiftLayout"),
         .executableTarget(name: "siftpg-probe", dependencies: ["SiftPG", "SiftCore"]),
         .testTarget(name: "SiftCoreTests", dependencies: ["SiftCore", "SiftTestSupport"]),
+        .testTarget(
+            name: "SiftDockerTests",
+            dependencies: ["SiftDocker", "SiftCore", "SiftTestSupport"],
+            resources: [.copy("Fixtures")]
+        ),
         .testTarget(name: "SiftPGTests", dependencies: ["SiftPG", "SiftCore", "SiftTestSupport"]),
         .testTarget(name: "SiftLayoutTests", dependencies: ["SiftLayout"]),
     ],
