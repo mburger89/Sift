@@ -70,7 +70,7 @@ struct MapCardLayer: Component {
                             relation: relation, keyColumns: layout.graph.keyColumns[node],
                             origin: layout.positions[node], lod: lod, isJoin: layout.graph.joinTables.contains(id),
                             hasSelfLoop: layout.hasSelfLoop(node), isSelected: id == selected,
-                            label: MapCardLabel.make(relation, in: snapshot)
+                            label: MapCardLabel.make(relation, in: snapshot), map: map
                         )
                         .equatable()
                     }

@@ -47,10 +47,23 @@ struct MapRenderTests {
         // number is a fixed budget plus the tiles in the cull window, whatever the number of tables.
         let bound = Self.steadyMeasureBudget + rig.map.culled.tiles.count
         #expect(work.measures.allSatisfy { $0 <= bound }, "measures: \(work.measures), bound \(bound)")
+
+        // The part that is not tiles is the same on a 13-table map: it is the toolbar, the minimap and the lists.
+        let small = try await MapRig(schema: FixtureSnapshot.shop())
+        let smallWork = Work.of(small) {
+            for _ in 0..<3 {
+                small.window.window.setNeedsRedraw()
+                small.window.tick()
+            }
+        }
+        let fixedBig = work.measures.max()! - rig.map.culled.tiles.count
+        let fixedSmall = smallWork.measures.max()! - small.map.culled.tiles.count
+        #expect(abs(fixedBig - fixedSmall) <= 4, "fixed part: \(fixedBig) with 500 tables, \(fixedSmall) with 13")
+        #expect(smallWork.cards == 0 && smallWork.tiles == 0)
     }
 
-    /// What one forced redraw measures with the map open, besides the edge tiles.
-    static let steadyMeasureBudget = 12
+    /// What one forced redraw measures with the map open, besides the edge tiles (the toolbar's controls, the minimap).
+    static let steadyMeasureBudget = 32
 
     @Test func aPanStepRebuildsNothingAndRasterizesNothing() async throws {
         let rig = try await MapRig.atAQuietPlace()

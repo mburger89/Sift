@@ -28,7 +28,7 @@ struct MapSpotlightLayer: Component {
                             relation: relation, keyColumns: layout.graph.keyColumns[n], origin: layout.positions[n],
                             lod: map.lod, isJoin: layout.graph.joinTables.contains(id), hasSelfLoop: layout.hasSelfLoop(n),
                             isSelected: id == map.selected, label: MapCardLabel.make(relation, in: snapshot),
-                            idPrefix: "map.spot"
+                            idPrefix: "map.spot", map: map
                         )
                         .equatable()
                     }

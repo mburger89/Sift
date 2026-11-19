@@ -19,6 +19,8 @@ struct TableCardView: Component, @MainActor Equatable {
     var label = ""
     /// `map.card` for the card on the map, `map.spot` for its copy in the spotlight.
     var idPrefix = "map.card"
+    /// What the card's accessibility actions do (Open, Show neighbours). Never compared: the map is the same one.
+    var map: MapModel?
 
     /// How many times a card's `content` has run, for the pins that a pan or a zoom step rebuilds none.
     @MainActor static var bodyCount = 0
@@ -51,6 +53,8 @@ struct TableCardView: Component, @MainActor Equatable {
         .accessibilityElement(children: .contain)
         .accessibilityLabel(label.isEmpty ? relation.id.name : label)
         .accessibilityIdentifier(identifier)
+        .accessibilityAction(named: "Open") { [map, id = relation.id] in map?.open(id) }
+        .accessibilityAction(named: "Show neighbours") { [map, id = relation.id] in map?.showNeighbours(of: id) }
         .offset(x: Pixels(Float(origin.x)), y: Pixels(Float(origin.y)))
     }
 
@@ -91,7 +95,7 @@ struct CardHeader: Component {
                     .accessibilityIdentifier("\(identifier).count")
             case .full:
                 HStack(spacing: Pixels(6)) {
-                    Text(verbatim: id.name).font(size: 14).lineLimit(1)
+                    Text(verbatim: id.name).font(size: 14).foregroundColor(isJoin ? .secondary : .primary).lineLimit(1)
                     if isJoin { JoinBadge() }
                 }
                 Text(verbatim: "\(relation.kind.displayName) in \(id.schema)").font(size: 11).foregroundColor(.secondary)
@@ -161,7 +165,7 @@ struct SelfLoopMark: Component {
 enum MapCardLabel {
     static func make(_ relation: RelationInfo, in snapshot: SchemaSnapshot) -> String {
         var parts = [relation.id.name, relation.kind.displayName.lowercased()]
-        if case .estimated(let n) = relation.rowEstimate { parts.append("about \(n) rows") }
+        if case .estimated(let n) = relation.rowEstimate { parts.append("about \(n) \(n == 1 ? "row" : "rows")") }
         func names(_ ids: [RelationID]) -> String {
             var seen = Set<RelationID>()
             return ids.filter { seen.insert($0).inserted }.map {

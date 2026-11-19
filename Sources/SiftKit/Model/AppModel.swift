@@ -146,6 +146,8 @@ public final class AppModel {
     func map(for key: ConnectionKey) -> MapModel {
         if let existing = maps[key] { return existing }
         let made = MapModel(store: environment.mapPositions)
+        made.app = self
+        made.key = key
         maps[key] = made
         return made
     }

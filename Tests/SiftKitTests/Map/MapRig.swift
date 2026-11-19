@@ -31,6 +31,13 @@ struct MapRig {
         try await window.runUntilIdle()
         window.advance(by: 1)
         for _ in 0..<3 { window.tick() }
+        // The map's size settles over the first frames (the toolbar finds its height); wait for it.
+        var last = map.viewSize
+        for _ in 0..<10 {
+            window.tick()
+            if map.viewSize == last { break }
+            last = map.viewSize
+        }
     }
 
     /// Frames drawn by `body`: the work counters of each.
@@ -54,16 +61,20 @@ extension MapRig {
         return rig
     }
 
-    /// A rig flown to the first table (every 37th from `t0100`) where a pan by (7, 3) brings no tile into view, so a
+    /// A rig flown to the first table (every 13th from `t0100`) with more than 20 cards and 10 tiles around it where
+    /// `pans` pans by (7, 3) bring no tile into view, so a
     /// pin on that pan can say 0 pixels: a tile that meets the clip for the first time is rasterized, legitimately.
-    static func atAQuietPlace() async throws -> MapRig {
+    static func atAQuietPlace(pans: Int = 1) async throws -> MapRig {
         let rig = try await MapRig(schema: big)
-        for n in stride(from: 100, to: 500, by: 37) {
+        for n in stride(from: 100, to: 480, by: 13) {
             let id = RelationID("s\(n % 5)", "t" + String(repeating: "0", count: 4 - String(n).count) + String(n))
             rig.map.flyTo(id, size: rig.map.viewSize!)
+            rig.window.tick()
+            rig.window.tick()
             var panned = rig.map.geometry
-            panned.panBy(7, 3, scale: 1)
-            if rig.tilesMeetingTheViewport(panned) == rig.tilesMeetingTheViewport() {
+            for _ in 0..<pans { panned.panBy(7, 3, scale: 1) }
+            if rig.map.culled.nodes.count > 20, rig.map.culled.tiles.count > 10,
+               rig.tilesMeetingTheViewport(panned) == rig.tilesMeetingTheViewport() {
                 for _ in 0..<3 { rig.window.tick() }
                 return rig
             }

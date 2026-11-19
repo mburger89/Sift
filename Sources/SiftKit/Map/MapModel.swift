@@ -61,7 +61,23 @@ final class MapModel {
         case pan(applied: Size<Pixels>)
     }
 
+    /// Where "Open" goes: the app, and this map's connection. Set when the app makes the map.
+    @ObservationIgnored weak var app: AppModel?
+    @ObservationIgnored var key: ConnectionKey?
+
     init(store: any MapPositionsStoring) { self.store = store }
+
+    /// Opens a table's details (and switches the detail area to Table).
+    func open(_ id: RelationID) {
+        guard let app, let key else { return }
+        app.select(id, in: key)
+    }
+
+    /// Spotlights a table and its neighbours without the pointer (the accessibility action).
+    func showNeighbours(of id: RelationID) {
+        selected = id
+        hovered = id
+    }
 
     // MARK: Loading
 

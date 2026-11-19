@@ -15,7 +15,6 @@ struct SchemaMapView: Component {
         let scale = Float(displayScale)
         let map = map
         // The canvas is the surface and the world is laid over it: what is drawn never sizes the surface.
-        let model = model, key = key
         Color.mapCanvas
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .overlay(alignment: .topLeading) {
@@ -42,7 +41,7 @@ struct SchemaMapView: Component {
             }
         }
         .gesture(SpatialTapGesture().onEnded { (tap: SpatialTapGesture.Value) in
-            Self.tap(tap, map, model: model, key: key)
+            Self.tap(tap, map)
         })
         .gesture(DragGesture(minimumDistance: Pixels(3))
             .onChanged { (value: DragGesture.Value) in
@@ -54,18 +53,18 @@ struct SchemaMapView: Component {
         .hoverKeyRegion()
         .onKeyPress(.return) {
             guard let selected = map.selected else { return .ignored }
-            model.select(selected, in: key)
+            map.open(selected)
             return .handled
         }
     }
 
     /// A click selects the table (or the foreign key) under it; a double click opens the table.
     @MainActor
-    static func tap(_ tap: SpatialTapGesture.Value, _ map: MapModel, model: AppModel, key: ConnectionKey) {
+    static func tap(_ tap: SpatialTapGesture.Value, _ map: MapModel) {
         if let table = map.table(at: tap.location) {
             map.selectedEdge = nil
             map.selected = table
-            if tap.clickCount >= 2 { model.select(table, in: key) }
+            if tap.clickCount >= 2 { map.open(table) }
         } else if let edge = map.edge(at: tap.location) {
             map.selectedEdge = edge
         } else {
