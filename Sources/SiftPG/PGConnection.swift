@@ -26,6 +26,9 @@ public final class PGConnection: @unchecked Sendable {
     private var conn: OpaquePointer?
     // Created once after connecting; `PQcancel` on it is safe from any thread.
     private let cancelHandle: OpaquePointer?
+    // Read from any thread without waiting for a running statement (`isBroken`).
+    private let brokenLock = NSLock()
+    private var brokenFlag = false
 
     /// Connects with a libpq connection string or URL.
     public convenience init(conninfo: String) throws {
@@ -68,9 +71,51 @@ public final class PGConnection: @unchecked Sendable {
         queue.sync { conn.map { Int(PQserverVersion($0)) } ?? 0 }
     }
 
-    /// True once libpq reports the connection as no longer usable.
+    /// True once a statement has found the connection unusable, or it was closed. It does not wait
+    /// for a running statement, so it is safe to read from the UI.
     public var isBroken: Bool {
-        queue.sync { conn.map { PQstatus($0) != CONNECTION_OK } ?? true }
+        brokenLock.lock()
+        defer { brokenLock.unlock() }
+        return brokenFlag
+    }
+
+    private func markBroken() {
+        brokenLock.lock()
+        brokenFlag = true
+        brokenLock.unlock()
+    }
+
+    /// Closes the connection. Later statements fail as connection-lost.
+    public func close() {
+        queue.sync {
+            if let conn { PQfinish(conn) }
+            conn = nil
+        }
+        markBroken()
+    }
+
+    /// Runs `sql` inside `BEGIN READ ONLY` with `SET LOCAL statement_timeout`, always ending the
+    /// transaction (`COMMIT`, or `ROLLBACK` when anything failed).
+    public func executeInReadOnlyTransaction(
+        _ sql: String, params: [String?] = [], statementTimeout: String
+    ) async throws -> ResultPage {
+        try await withCheckedThrowingContinuation { (c: CheckedContinuation<ResultPage, any Error>) in
+            queue.async {
+                do {
+                    _ = try self.run("BEGIN READ ONLY", params: [])
+                    do {
+                        // The timeout is validated by the server; it never carries user text.
+                        _ = try self.run("SET LOCAL statement_timeout = '\(statementTimeout)'", params: [])
+                        let page = try self.run(sql, params: params)
+                        _ = try self.run("COMMIT", params: [])
+                        c.resume(returning: page)
+                    } catch {
+                        _ = try? self.run("ROLLBACK", params: [])
+                        c.resume(throwing: error)
+                    }
+                } catch { c.resume(throwing: error) }
+            }
+        }
     }
 
     /// The server process id of this session.
@@ -94,7 +139,10 @@ public final class PGConnection: @unchecked Sendable {
 
     // Runs on `queue`.
     private func run(_ sql: String, params: [String?]) throws -> ResultPage {
-        guard let conn else { throw PGError("connection is closed", isConnectionLost: true) }
+        guard let conn else {
+            markBroken()
+            throw PGError("connection is closed", isConnectionLost: true)
+        }
         // C strings for the parameters, freed after the call.
         let buffers: [UnsafeMutablePointer<CChar>?] = params.map { p in
             guard let p else { return nil }
@@ -109,9 +157,9 @@ public final class PGConnection: @unchecked Sendable {
         guard let result = PQexecParams(
             conn, sql, Int32(params.count), nil, values, nil, nil, 0
         ) else {
-            throw PGError(
-                String(cString: PQerrorMessage(conn)).trimmingTrailingNewlines(),
-                isConnectionLost: PQstatus(conn) == CONNECTION_BAD)
+            let lost = PQstatus(conn) == CONNECTION_BAD
+            if lost { markBroken() }
+            throw PGError(String(cString: PQerrorMessage(conn)).trimmingTrailingNewlines(), isConnectionLost: lost)
         }
         defer { PQclear(result) }
 
@@ -124,11 +172,11 @@ public final class PGConnection: @unchecked Sendable {
             var state: String?
             if let f = PQresultErrorField(result, Int32(UInt8(ascii: "C"))) { state = String(cString: f) }
             // Not classified by SQLSTATE: a dropped socket has none.
-            return try {
-                throw PGError(
-                    String(cString: PQresultErrorMessage(result)).trimmingTrailingNewlines(),
-                    sqlState: state, isConnectionLost: PQstatus(conn) == CONNECTION_BAD)
-            }()
+            let lost = PQstatus(conn) == CONNECTION_BAD
+            if lost { markBroken() }
+            throw PGError(
+                String(cString: PQresultErrorMessage(result)).trimmingTrailingNewlines(),
+                sqlState: state, isConnectionLost: lost)
         }
     }
 
