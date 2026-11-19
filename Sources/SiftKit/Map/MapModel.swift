@@ -23,7 +23,7 @@ final class MapModel {
     private(set) var lod: MapLOD = .full
     private(set) var cull: CullWindow?
     private(set) var culled = CulledSet()
-    private(set) var edgeTiles = EdgeTiles(pieces: [], tileSize: 512)
+    private(set) var edgeTiles = EdgeTiles(pieces: [], tileSize: EdgeTiles.base)
     /// The edges of the card being dragged, drawn live instead of in the tiles.
     private(set) var liveEdges: [EdgePiece] = []
     private(set) var dragged: RelationID?
@@ -100,7 +100,7 @@ final class MapModel {
         guard let layout else { return }
         index = SpatialIndex(rects: layout.rects)
         tileBucket = geometry.zoomBucket
-        let size = 512 / tileBucket
+        let size = EdgeTiles.base / tileBucket
         edgeTiles = EdgeTiles(pieces: EdgeRouting.pieces(for: layout, tileSize: size, excluding: dragEdgeSet), tileSize: size)
         cull = nil
         refreshView()
@@ -186,7 +186,7 @@ final class MapModel {
         var changed = false
         if geometry.zoomBucket != tileBucket {
             tileBucket = geometry.zoomBucket
-            let size = 512 / tileBucket
+            let size = EdgeTiles.base / tileBucket
             edgeTiles = EdgeTiles(
                 pieces: EdgeRouting.pieces(for: layout!, tileSize: size, excluding: dragEdgeSet), tileSize: size)
             changed = true

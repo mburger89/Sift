@@ -3,9 +3,9 @@ import Observation
 import SiftCore
 import SiftDocker
 
-/// What the detail area shows for a selected table. The map arrives with phase 2b.
+/// What the detail area shows for a connected database: a selected table's details, or the schema map.
 public enum DetailMode: Sendable, Equatable {
-    case table
+    case table, map
 }
 
 /// The app's state, one `@Observable` class created in `main.swift` and handed to the views.
@@ -19,7 +19,16 @@ public final class AppModel {
     public private(set) var discoveryProblemDetail: String?
     public private(set) var sessions: [ConnectionKey: DatabaseSession] = [:]
     /// What the sidebar has selected.
-    public var selection: SidebarNodeID?
+    public var selection: SidebarNodeID? {
+        didSet {
+            // A database node opens its map; a table or schema opens its table detail.
+            switch selection {
+            case .saved?, .container?: detailMode = .map
+            case .relation?, .schema?: detailMode = .table
+            default: break
+            }
+        }
+    }
     public var detailMode: DetailMode = .table
     /// Why saved connections could not be read or written, if they could not.
     public private(set) var storageProblem: String?
@@ -28,6 +37,7 @@ public final class AppModel {
 
     @ObservationIgnored public let environment: SiftEnvironment
     @ObservationIgnored private var discoveryTask: Task<Void, Never>?
+    @ObservationIgnored private var maps: [ConnectionKey: MapModel] = [:]
 
     public init(environment: SiftEnvironment) {
         self.environment = environment
@@ -130,6 +140,33 @@ public final class AppModel {
         selection = .relation(key, relation)
     }
 
+    // MARK: The map
+
+    /// The map of a connection's database, made on first use and kept while the connection is in the list.
+    func map(for key: ConnectionKey) -> MapModel {
+        if let existing = maps[key] { return existing }
+        let made = MapModel(store: environment.mapPositions)
+        maps[key] = made
+        return made
+    }
+
+    /// Switches between a table's details and the map. The two share one selection: going to the map selects
+    /// the sidebar's table there, and coming back selects the map's.
+    public func setDetailMode(_ mode: DetailMode) {
+        guard mode != detailMode, let key = selection?.connection else {
+            detailMode = mode
+            return
+        }
+        switch mode {
+        case .map:
+            if case .relation(_, let id)? = selection { map(for: key).selected = id }
+            detailMode = .map
+        case .table:
+            if let id = maps[key]?.selected { selection = .relation(key, id) }
+            detailMode = .table
+        }
+    }
+
     // MARK: Saved connections
 
     /// Adds or updates a saved connection. `password` is kept in memory only.
@@ -150,6 +187,7 @@ public final class AppModel {
         environment.credentials.removePassword(for: CredentialKey(connectionID: id))
         sessions[.saved(id)]?.close()
         sessions[.saved(id)] = nil
+        maps[.saved(id)] = nil
         if selection?.connection == .saved(id) { selection = nil }
         persistConnections()
     }

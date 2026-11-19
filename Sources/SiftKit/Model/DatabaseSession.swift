@@ -28,7 +28,11 @@ public final class DatabaseSession {
     public let key: ConnectionKey
     public let title: String
     public private(set) var state: State = .connecting
-    public private(set) var snapshot: SchemaSnapshot?
+    public private(set) var snapshot: SchemaSnapshot? {
+        didSet { snapshotVersion += 1 }
+    }
+    /// Counts the snapshots installed: a cheap key for what depends on the schema (the map's layout).
+    public private(set) var snapshotVersion = 0
     /// The database the session is (or was last) connected to: with the key, what a map's pins belong to.
     public private(set) var database: String?
     public private(set) var rows: [RelationID: Loadable<ResultPage>] = [:]

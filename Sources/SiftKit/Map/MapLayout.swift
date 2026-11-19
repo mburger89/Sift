@@ -81,6 +81,10 @@ struct MapLayout: Equatable, Sendable {
         bounds = bounds.union(rect(of: node))
     }
 
+    func hasSelfLoop(_ node: Int) -> Bool {
+        selfLoops.contains { graph.graph.edges[$0].from == node }
+    }
+
     /// The points an edge runs through, from its port on the referencing card to its port on the
     /// referenced one, with the layout's bends in between. Not for self-loops.
     func path(of edge: Int) -> [LayoutPoint] {

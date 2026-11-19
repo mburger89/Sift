@@ -78,6 +78,11 @@ struct MapGeometryTests {
         let far = CullWindow.updated(window, viewport: LayoutRect(x: 600, y: 0, width: 1000, height: 800))
         #expect(far == CullWindow.around(LayoutRect(x: 600, y: 0, width: 1000, height: 800)))
         #expect(CullWindow.updated(nil, viewport: viewport) == window)
+        // Zooming in leaves the window holding far more than the viewport shows: a smaller one is made.
+        let zoomedIn = LayoutRect(x: 400, y: 300, width: 300, height: 240)
+        #expect(CullWindow.updated(window, viewport: zoomedIn) == CullWindow.around(zoomedIn))
+        // A small zoom step does not.
+        #expect(CullWindow.updated(window, viewport: LayoutRect(x: 50, y: 40, width: 900, height: 720)) == nil)
         // Zooming out grows the viewport past the window.
         #expect(CullWindow.updated(window, viewport: LayoutRect(x: -100, y: -100, width: 1500, height: 1200)) != nil)
     }

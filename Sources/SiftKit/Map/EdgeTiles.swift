@@ -80,6 +80,12 @@ struct TileID: Hashable, Comparable, Sendable {
 
 /// The pieces of every edge, bucketed by the tile their centre lies in. Each tile is one `Path`.
 struct EdgeTiles {
+    /// A tile is `base / zoomBucket` canvas units on a side, so it is between `base` and `2 * base` points on
+    /// screen. MetalUI rasterizes a stroked path once, and a whole-pixel pan then costs nothing, only while the
+    /// path reaches no more than half the window beyond the clip (`PN-A`); a tile's strokes reach up to 1.5 tiles
+    /// (a piece is at most half a tile and is filed by its centre), so the tile has to be small next to the window.
+    static let base = 128.0
+
     let tileSize: Double
     private var buckets: [TileID: [EdgePiece]] = [:]
 

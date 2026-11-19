@@ -102,11 +102,12 @@ struct CullWindow: Equatable {
     }
 
     /// A new window when the viewport has left `current`'s inner half (its rectangle less half the margin on each
-    /// side), else nil.
+    /// side), or has shrunk to under a third of the window (a zoom in: the window would hold too many cards), else nil.
     static func updated(_ current: CullWindow?, viewport: LayoutRect) -> CullWindow? {
         guard let current else { return around(viewport) }
         let inner = current.rect.grown(by: -current.rect.width / 8, -current.rect.height / 8)
-        return inner.contains(viewport) ? nil : around(viewport)
+        let tooLarge = viewport.width < current.rect.width / 3 || viewport.height < current.rect.height / 3
+        return inner.contains(viewport) && !tooLarge ? nil : around(viewport)
     }
 }
 
