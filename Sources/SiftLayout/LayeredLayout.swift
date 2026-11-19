@@ -22,7 +22,13 @@ public enum LayeredLayout {
 
         let ranks = Layering.longestPath(nodeCount: count, edges: dag)
         let expansion = Dummies.insert(ranks: ranks, edges: dag)
-        let placed = place(canonical: canonical, expansion: expansion, options: options)
+        var initial = [[Int]](repeating: [], count: (expansion.rank.max() ?? -1) + 1)
+        for node in expansion.rank.indices { initial[expansion.rank[node]].append(node) }
+        let reduction = CrossingReduction.reduce(
+            order: initial, predecessors: expansion.predecessors,
+            successors: expansion.successors, sweeps: options.sweeps)
+        let placed = place(
+            canonical: canonical, expansion: expansion, layers: reduction.order, options: options)
 
         var result = LayoutResult()
         for (index, id) in canonical.ids.enumerated() {
@@ -39,18 +45,19 @@ public enum LayeredLayout {
             result.routes[edge] = isReversed[pair] ? route.reversed() : route
         }
         result.stats.dummyNodes = expansion.dummyCount
+        result.stats.crossingsBefore = reduction.crossingsBefore
+        result.stats.crossingsAfter = reduction.crossingsAfter
+        result.stats.sweepsRun = reduction.sweepsRun
         result.stats.components = count == 0 ? 0 : 1
         return result
     }
 
     /// Coordinates for the real nodes and the centre point of every dummy.
     private static func place(
-        canonical: Canonical, expansion: Dummies.Expansion, options: LayoutOptions
+        canonical: Canonical, expansion: Dummies.Expansion, layers: [[Int]], options: LayoutOptions
     ) -> (positions: [LayoutPoint], points: [LayoutPoint]) {
         let total = expansion.rank.count
         let rankCount = (expansion.rank.max() ?? -1) + 1
-        var layers = [[Int]](repeating: [], count: rankCount)
-        for node in 0..<total { layers[expansion.rank[node]].append(node) }
 
         func height(_ node: Int) -> Double { node < expansion.realCount ? canonical.heights[node] : 0 }
         var center = [Double](repeating: 0, count: total)
