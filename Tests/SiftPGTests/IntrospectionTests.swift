@@ -127,3 +127,11 @@ func withSnapshot(
         }
     }
 }
+
+@Suite struct CatalogLiteralTests {
+    @Test func arrayLiteralEscapesQuotesAndBackslashes() {
+        #expect(PGCatalog.arrayLiteral(["a", "b c"]) == "{\"a\",\"b c\"}")
+        #expect(PGCatalog.arrayLiteral(["we\"ird\\"]) == "{\"we\\\"ird\\\\\"}")
+        #expect(PGCatalog.arrayLiteral([]) == "{}")
+    }
+}

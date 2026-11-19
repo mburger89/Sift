@@ -1,14 +1,28 @@
+import Foundation
+
 /// The catalog queries, public so a reviewer can read them. Each runs on one read-only connection.
 ///
 /// Multi-valued catalog fields (`conkey`, `confkey`) are `unnest(...) WITH ORDINALITY` into rows and
 /// index columns come from `pg_get_indexdef(oid, k, true)`, so no Postgres array text is ever decoded
 /// (decision D8). Everything that is not text is cast in SQL so the result decodes to a plain value.
+///
+/// Every query takes one parameter, `$1`: a text array literal of schema names, or NULL for every
+/// visible schema (`PGCatalog.arrayLiteral`). Filtering in SQL keeps the catalog functions
+/// (`pg_get_indexdef`, ...) from touching relations in schemas nobody asked for, which another
+/// session may be dropping at that moment.
 public enum PGCatalog {
     static let hiddenSchemas = #"""
         n.nspname NOT IN ('pg_catalog', 'information_schema')
         AND n.nspname NOT LIKE 'pg\_toast%' AND n.nspname NOT LIKE 'pg\_temp\_%'
         AND has_schema_privilege(n.oid, 'USAGE')
+        AND ($1::text[] IS NULL OR n.nspname = ANY($1::text[]))
         """#
+
+    /// A text-array literal for `$1`: `{"a","b"}` with `\` and `"` escaped.
+    public static func arrayLiteral(_ names: [String]) -> String {
+        "{" + names.map { "\"" + $0.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\"" }
+            .joined(separator: ",") + "}"
+    }
 
     /// Relation kinds Sift lists. Partitions (`relispartition`) are hidden: the partitioned parent stands for them.
     static let listedRelations = "c.relkind IN ('r', 'p', 'v', 'm', 'f') AND NOT c.relispartition"

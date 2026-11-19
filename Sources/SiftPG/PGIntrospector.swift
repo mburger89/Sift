@@ -9,14 +9,25 @@ public struct PGIntrospector: Sendable {
     /// `schemas` limits the result to those schema names (nil means every visible schema).
     /// Foreign keys whose far end is outside the result are dropped, so no edge dangles.
     public func snapshot(schemas wanted: [String]? = nil) async throws -> SchemaSnapshot {
+        // A relation dropped by another session while the catalog functions run fails the whole
+        // read with XX000 ("could not open relation with OID"); a second read sees the new state.
+        var attempt = 1
+        while true {
+            do { return try await read(schemas: wanted) } catch let e as PGError
+                where attempt < 3 && !e.isConnectionLost && (e.sqlState == "XX000" || e.sqlState == "42P01")
+            { attempt += 1 }
+        }
+    }
+
+    private func read(schemas wanted: [String]?) async throws -> SchemaSnapshot {
         let version = connection.serverVersion
         guard version >= 120_000 else { throw SourceError(.other, "Postgres 12 or later is needed") }
-        let keep: (String) -> Bool = { name in wanted.map { $0.contains(name) } ?? true }
+        let filter: [String?] = [wanted.map(PGCatalog.arrayLiteral)]
 
-        let schemaNames = try await connection.execute(PGCatalog.schemas).rows.map { $0[0].string }.filter(keep)
+        let schemaNames = try await connection.execute(PGCatalog.schemas, params: filter).rows.map { $0[0].string }
         var order: [RelationID] = []
         var infos: [RelationID: RelationInfo] = [:]
-        for r in try await connection.execute(PGCatalog.relations).rows where keep(r[0].string) {
+        for r in try await connection.execute(PGCatalog.relations, params: filter).rows {
             let id = RelationID(r[0].string, r[1].string)
             let tuples = r[4].double
             order.append(id)
@@ -24,7 +35,7 @@ public struct PGIntrospector: Sendable {
                 id: id, kind: Self.kind(r[2].string), oid: UInt32(truncatingIfNeeded: r[3].int),
                 rowEstimate: tuples < 0 ? .unknown : .estimated(Int64(tuples)), comment: r[5].optionalString)
         }
-        for r in try await connection.execute(PGCatalog.columns).rows {
+        for r in try await connection.execute(PGCatalog.columns, params: filter).rows {
             let id = RelationID(r[0].string, r[1].string)
             guard infos[id] != nil else { continue }
             infos[id]!.columns.append(ColumnInfo(
@@ -56,7 +67,7 @@ public struct PGIntrospector: Sendable {
             keyColumns = []
             refColumns = []
         }
-        for r in try await connection.execute(PGCatalog.constraints).rows {
+        for r in try await connection.execute(PGCatalog.constraints, params: filter).rows {
             let rel = RelationID(r[0].string, r[1].string)
             guard infos[rel] != nil else { continue }
             if currentKey?.rel != rel || currentKey?.name != r[2].string {
@@ -84,7 +95,7 @@ public struct PGIntrospector: Sendable {
             indexColumns = []
             pending = nil
         }
-        for r in try await connection.execute(PGCatalog.indexes).rows {
+        for r in try await connection.execute(PGCatalog.indexes, params: filter).rows {
             let rel = RelationID(r[0].string, r[1].string)
             guard infos[rel] != nil else { continue }
             if currentIndex?.rel != rel || currentIndex?.name != r[2].string {
