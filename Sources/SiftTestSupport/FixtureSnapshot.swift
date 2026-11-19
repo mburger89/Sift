@@ -18,10 +18,19 @@ public enum FixtureSnapshot {
                 name: name, ordinal: n, typeName: type, isNullable: null, defaultExpression: def,
                 identity: identity, isGenerated: generated, isEnum: isEnum)
         }
-        func pkIndex(_ table: String, _ cols: [String]) -> IndexInfo {
+        // `pg_get_indexdef` qualifies the table with its schema (the fixture schema is not on the
+        // search path), quotes a name only when it needs it, and writes `ON ONLY` for a
+        // partitioned table.
+        func q(_ name: String) -> String {
+            name.allSatisfy { $0.isLowercase || $0.isNumber || $0 == "_" } && !(name.first?.isNumber ?? true)
+                ? name : "\"" + name.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+        }
+        func pkIndex(_ table: String, _ cols: [String], schema: String, only: Bool) -> IndexInfo {
             IndexInfo(
                 name: "\(table)_pkey", columns: cols, isUnique: true, isPrimary: true, method: "btree",
-                definition: "CREATE UNIQUE INDEX \(table)_pkey ON \(table) USING btree (\(cols.joined(separator: ", ")))")
+                definition:
+                    "CREATE UNIQUE INDEX \(q("\(table)_pkey")) ON \(only ? "ONLY " : "")\(schema).\(q(table)) USING btree (\(cols.joined(separator: ", ")))"
+            )
         }
         func table(
             _ name: String, schema: String? = nil, kind: RelationKind = .table,
@@ -32,7 +41,7 @@ public enum FixtureSnapshot {
                 id: RelationID(schema ?? a, name), kind: kind, rowEstimate: estimate, columns: columns,
                 primaryKey: pk.map { KeyConstraint(name: "\(name)_pkey", columns: $0) },
                 uniqueConstraints: unique,
-                indexes: (pk.map { [pkIndex(name, $0)] } ?? []) + indexes)
+                indexes: (pk.map { [pkIndex(name, $0, schema: schema ?? a, only: kind == .partitionedTable)] } ?? []) + indexes)
         }
         func fk(
             _ name: String, _ from: String, _ fromCols: [String], to: RelationID, _ toCols: [String],
@@ -44,17 +53,17 @@ public enum FixtureSnapshot {
 
         let tags = table(
             "tags", schema: b,
-            columns: [col("id", 1, "integer", null: false, def: "nextval('tags_id_seq'::regclass)"), col("label", 2, "text")],
+            columns: [col("id", 1, "integer", null: false, def: "nextval('\(b).tags_id_seq'::regclass)"), col("label", 2, "text")],
             pk: ["id"], unique: [KeyConstraint(name: "tags_label_key", columns: ["label"])],
             indexes: [
                 IndexInfo(
                     name: "tags_label_key", columns: ["label"], isUnique: true, isPrimary: false, method: "btree",
-                    definition: "CREATE UNIQUE INDEX tags_label_key ON tags USING btree (label)")
+                    definition: "CREATE UNIQUE INDEX tags_label_key ON \(b).tags USING btree (label)")
             ])
         let customers = table(
             "customers",
             columns: [
-                col("id", 1, "bigint", null: false, def: "nextval('customers_id_seq'::regclass)"),
+                col("id", 1, "bigint", null: false, def: "nextval('\(a).customers_id_seq'::regclass)"),
                 col("email", 2, "text", null: false),
                 col("created_at", 3, "timestamp with time zone", null: false, def: "now()"),
             ],
@@ -62,7 +71,7 @@ public enum FixtureSnapshot {
             indexes: [
                 IndexInfo(
                     name: "customers_email_key", columns: ["email"], isUnique: true, isPrimary: false, method: "btree",
-                    definition: "CREATE UNIQUE INDEX customers_email_key ON customers USING btree (email)")
+                    definition: "CREATE UNIQUE INDEX customers_email_key ON \(a).customers USING btree (email)")
             ])
         let products = table(
             "products",
@@ -73,15 +82,15 @@ public enum FixtureSnapshot {
             pk: ["id"],
             indexes: [
                 IndexInfo(
-                    name: "products_lower_name_idx", columns: [], isUnique: false, isPrimary: false, method: "btree",
-                    definition: "CREATE INDEX products_lower_name_idx ON products USING btree (lower((name)::text))")
+                    name: "products_lower_name_idx", columns: ["lower(name::text)"], isUnique: false, isPrimary: false, method: "btree",
+                    definition: "CREATE INDEX products_lower_name_idx ON \(a).products USING btree (lower((name)::text))")
             ])
         let orders = table(
             "orders",
             columns: [
                 col("id", 1, "bigint", null: false, identity: .always),
                 col("customer_id", 2, "bigint", null: false),
-                col("status", 3, "order_status", null: false, def: "'new'::order_status", isEnum: true),
+                col("status", 3, "\(a).order_status", null: false, def: "'new'::\(a).order_status", isEnum: true),
                 col("total", 4, "numeric(12,2)"),
                 col("total_cents", 5, "bigint", generated: true),
             ],
@@ -89,9 +98,9 @@ public enum FixtureSnapshot {
             indexes: [
                 IndexInfo(
                     name: "orders_open_idx", columns: ["customer_id"], isUnique: false, isPrimary: false,
-                    method: "btree", predicate: "(status <> 'done'::order_status)",
+                    method: "btree", predicate: "(status <> 'done'::\(a).order_status)",
                     definition:
-                        "CREATE INDEX orders_open_idx ON orders USING btree (customer_id) WHERE (status <> 'done'::order_status)")
+                        "CREATE INDEX orders_open_idx ON \(a).orders USING btree (customer_id) WHERE (status <> 'done'::\(a).order_status)")
             ])
         let orderItems = table(
             "order_items",
@@ -103,14 +112,14 @@ public enum FixtureSnapshot {
         let shipments = table(
             "shipments",
             columns: [
-                col("id", 1, "integer", null: false, def: "nextval('shipments_id_seq'::regclass)"),
+                col("id", 1, "integer", null: false, def: "nextval('\(a).shipments_id_seq'::regclass)"),
                 col("order_id", 2, "bigint", null: false), col("product_id", 3, "uuid", null: false),
             ],
             pk: ["id"])
         let employees = table(
             "employees",
             columns: [
-                col("id", 1, "integer", null: false, def: "nextval('employees_id_seq'::regclass)"),
+                col("id", 1, "integer", null: false, def: "nextval('\(a).employees_id_seq'::regclass)"),
                 col("manager_id", 2, "integer"),
             ],
             pk: ["id"])
@@ -129,7 +138,7 @@ public enum FixtureSnapshot {
         let neverAnalyzed = table(
             "never_analyzed", estimate: .unknown, columns: [col("id", 1, "integer")])
         let recentOrders = table(
-            "recent_orders", kind: .view, columns: [col("id", 1, "bigint"), col("customer_id", 2, "bigint")])
+            "recent_orders", kind: .view, estimate: .unknown, columns: [col("id", 1, "bigint"), col("customer_id", 2, "bigint")])
         let customerTotals = table(
             "customer_totals", kind: .materializedView,
             columns: [col("customer_id", 1, "bigint"), col("total", 2, "numeric")])
