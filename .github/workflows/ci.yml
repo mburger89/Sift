@@ -81,7 +81,9 @@ jobs:
         ref: ${{ env.METALUI_REF }}
         path: MetalUI
     - name: Install build tools and libpq
-      run: apt-get update && apt-get install -y --no-install-recommends libpq-dev pkg-config cmake ninja-build python3 curl ca-certificates git \
+      run: |
+        apt-get update
+        apt-get install -y --no-install-recommends libpq-dev pkg-config cmake ninja-build python3 curl ca-certificates git \
           libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev libxtst-dev \
           libxkbcommon-dev libwayland-dev wayland-protocols libegl-dev libdecor-0-dev
     # Ubuntu 24.04 ships only SDL2, so SDL3 is built from source once and cached. No test needs SDL:
