@@ -27,7 +27,8 @@ jobs:
     - run: swift run siftpg-probe
     - name: Stop Postgres
       if: always()
-      run: "$(brew --prefix postgresql@17)/bin/pg_ctl" -D "$RUNNER_TEMP/pgdata" stop || true
+      run: |
+        "$(brew --prefix postgresql@17)/bin/pg_ctl" -D "$RUNNER_TEMP/pgdata" stop || true
 
   linux:
     runs-on: ubuntu-24.04
