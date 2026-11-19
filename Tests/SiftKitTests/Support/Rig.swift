@@ -75,6 +75,15 @@ struct Rig {
         if started { model.start() }
     }
 
+    /// Waits (bounded, so a broken build fails instead of hanging) until `n` tasks sleep on the manual clock.
+    func sleeperPending(_ n: Int = 1) async throws {
+        for _ in 0..<5000 {
+            if await clock.pendingSleepers >= n { return }
+            await Task.yield()
+        }
+        throw RigError.timedOut("a sleeper on the manual clock")
+    }
+
     /// Waits until `condition` holds, yielding to the main actor between looks (no wall clock).
     func until(_ what: String = "condition", _ condition: @MainActor () -> Bool) async throws {
         for _ in 0..<2000 where !condition() { await Task.yield() }

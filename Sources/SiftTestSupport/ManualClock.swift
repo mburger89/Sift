@@ -45,6 +45,9 @@ public actor ManualClock: SiftClock {
         for s in due { s.continuation.resume() }
     }
 
+    /// How many tasks are suspended in `sleep` right now.
+    public var pendingSleepers: Int { sleepers.count }
+
     /// Returns once at least `n` tasks are suspended in `sleep`.
     public func waitForSleepers(_ n: Int) async {
         if sleepers.count >= n { return }

@@ -46,7 +46,7 @@ struct SessionModelTests {
         #expect(session.state == .lost("server closed the connection unexpectedly"))
         rig.discovery.result = .success([shopContainer(port: 55433)])
 
-        await rig.clock.waitForSleepers(1)
+        try await rig.sleeperPending()
         #expect(await rig.clock.sleeps.prefix(1) == [0.5])
         await rig.clock.advance(by: 0.5)
         try await rig.until("ready again") { session.state == .ready }
@@ -74,10 +74,10 @@ struct SessionModelTests {
         rig.discovery.result = .success([])
 
         for _ in 0..<6 {
-            await rig.clock.waitForSleepers(1)
+            try await rig.sleeperPending()
             await rig.clock.advance(by: 100)
         }
-        await rig.clock.waitForSleepers(1)
+        try await rig.sleeperPending()
         #expect(await rig.clock.sleeps.prefix(6) == [0.5, 1, 2, 4, 5, 5])
         #expect(session.state == .lost("Container shop-db was not found"))
         #expect(rig.connector.targets.count == 1, "nothing to connect to while the container is gone")
@@ -91,7 +91,7 @@ struct SessionModelTests {
         await session.loadRows(orders)
         rig.sources[0].failNext = SourceError(.connectionLost, "gone")
         await session.loadRows(orders, force: true)
-        await rig.clock.waitForSleepers(1)  // not vacuous: a retry really is pending
+        try await rig.sleeperPending()  // not vacuous: a retry really is pending
 
         session.stopTrying()
         #expect(session.state == .stopped)
@@ -109,7 +109,7 @@ struct SessionModelTests {
         await session.loadRows(orders)
         rig.sources[0].failNext = SourceError(.connectionLost, "gone")
         await session.loadRows(orders, force: true)
-        await rig.clock.waitForSleepers(1)
+        try await rig.sleeperPending()
 
         await session.reconnectNow()
         #expect(session.state == .ready, "no clock advance was needed")

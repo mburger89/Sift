@@ -28,6 +28,21 @@ func siftWindow(model: AppModel, size: Size<Pixels> = siftWindowSize, recordsLay
     return window
 }
 
+/// Any element tree in a headless window with the same text setup as `siftWindow`.
+@MainActor
+func siftTestWindow<Content: Element>(size: Size<Pixels> = Size(width: Pixels(400), height: Pixels(300)),
+                                      recordsLayout: Bool = true, @ElementBuilder content: @escaping @MainActor () -> Content) throws -> TestWindow {
+    #if os(Linux) || os(Windows)
+    let resolver = try testFontResolver()
+    let window = try TestWindow(size: size, recordsLayout: recordsLayout, textSystem: { PortableTextSystem(resolver: resolver) }, content: content)
+    #else
+    let window = try TestWindow(size: size, recordsLayout: recordsLayout, content: content)
+    #endif
+    window.tick()
+    window.tick()
+    return window
+}
+
 #if os(Linux) || os(Windows)
 private func testFontResolver() throws -> PortableFontResolver {
     let here = URL(fileURLWithPath: #filePath)

@@ -20,14 +20,7 @@ struct SiftScreen: Component {
 
     var content: some ElementGroup {
         HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 0) {
-                Text("Sift").font(size: 13).foregroundColor(.secondary)
-            }
-            .padding(inset(10, 8))
-            .frame(width: Pixels(260))
-            .frame(maxHeight: .infinity)
-            .background(.sidebarFill)
-            .accessibilityIdentifier("sidebar")
+            SidebarView(model: model)
             Divider()
             VStack {
                 Text("Select a connection").foregroundColor(.secondary)
