@@ -81,7 +81,9 @@ jobs:
         ref: ${{ env.METALUI_REF }}
         path: MetalUI
     - name: Install build tools and libpq
-      run: apt-get update && apt-get install -y --no-install-recommends libpq-dev pkg-config cmake ninja-build python3 curl ca-certificates git
+      run: apt-get update && apt-get install -y --no-install-recommends libpq-dev pkg-config cmake ninja-build python3 curl ca-certificates git \
+          libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxfixes-dev libxss-dev libxtst-dev \
+          libxkbcommon-dev libwayland-dev wayland-protocols libegl-dev libdecor-0-dev
     # Ubuntu 24.04 ships only SDL2, so SDL3 is built from source once and cached. No test needs SDL:
     # `TestWindow` is headless. It is needed because `swift build --build-tests` links the Sift executable.
     - uses: actions/cache@v4
@@ -94,6 +96,7 @@ jobs:
       run: |
         git clone --depth 1 --branch release-$SDL_VERSION https://github.com/libsdl-org/SDL.git /tmp/SDL
         cmake -S /tmp/SDL -B /tmp/SDL/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/sdl3 \
+          -DSDL_X11=ON -DSDL_X11_SHARED=ON -DSDL_WAYLAND=ON -DSDL_WAYLAND_SHARED=ON -DSDL_WAYLAND_LIBDECOR=ON \
           -DSDL_AUDIO=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF
         cmake --build /tmp/SDL/build
         cmake --install /tmp/SDL/build
@@ -201,19 +204,19 @@ jobs:
     # No pkg-config on Windows: three flag sources (libpq, SDL3, AccessKit) go to every swift call.
     - name: Build
       run: |
-        $flags = @("-Xcc", "-IC:\pqdev\include", "-Xlinker", "-LC:\pqdev\lib", "-Xcc", "-I$env:SDL3_INCLUDE", "-Xswiftc", "-L$env:SDL3_LIB") +
+        $flags = @("-Xcc", "-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH", "-Xcc", "-IC:\pqdev\include", "-Xlinker", "-LC:\pqdev\lib", "-Xcc", "-I$env:SDL3_INCLUDE", "-Xswiftc", "-L$env:SDL3_LIB") +
                  @(Get-Content "$env:RUNNER_TEMP\accesskit-flags.txt")
         swift build --build-tests @flags
         exit $LASTEXITCODE
     - name: Test
       run: |
-        $flags = @("-Xcc", "-IC:\pqdev\include", "-Xlinker", "-LC:\pqdev\lib", "-Xcc", "-I$env:SDL3_INCLUDE", "-Xswiftc", "-L$env:SDL3_LIB") +
+        $flags = @("-Xcc", "-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH", "-Xcc", "-IC:\pqdev\include", "-Xlinker", "-LC:\pqdev\lib", "-Xcc", "-I$env:SDL3_INCLUDE", "-Xswiftc", "-L$env:SDL3_LIB") +
                  @(Get-Content "$env:RUNNER_TEMP\accesskit-flags.txt")
         swift test --skip-build --no-parallel @flags
         exit $LASTEXITCODE
     - name: Probe
       run: |
-        $flags = @("-Xcc", "-IC:\pqdev\include", "-Xlinker", "-LC:\pqdev\lib", "-Xcc", "-I$env:SDL3_INCLUDE", "-Xswiftc", "-L$env:SDL3_LIB") +
+        $flags = @("-Xcc", "-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH", "-Xcc", "-IC:\pqdev\include", "-Xlinker", "-LC:\pqdev\lib", "-Xcc", "-I$env:SDL3_INCLUDE", "-Xswiftc", "-L$env:SDL3_LIB") +
                  @(Get-Content "$env:RUNNER_TEMP\accesskit-flags.txt")
         swift run @flags siftpg-probe
         exit $LASTEXITCODE
