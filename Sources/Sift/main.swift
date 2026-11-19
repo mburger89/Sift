@@ -18,7 +18,8 @@ func makeApp() throws -> App {
     #endif
 }
 
-let model = AppModel()
+let model = AppModel(environment: .live())
+model.start()
 let app = try makeApp()
 try app.openWindow(title: "Sift", size: siftWindowSize, minSize: siftMinimumSize) { siftRootView(model: model) }
 app.run()

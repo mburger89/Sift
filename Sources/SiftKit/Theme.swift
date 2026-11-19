@@ -15,3 +15,11 @@ struct SidebarFill: ThemeColorKey {
 extension Color {
     static let sidebarFill = Color(SidebarFill.self)
 }
+
+extension AppModel {
+    /// A `Binding` to one of the model's properties, so a control can write it (a write runs from input).
+    func binding<Value>(_ keyPath: ReferenceWritableKeyPath<AppModel, Value>) -> Binding<Value> {
+        nonisolated(unsafe) let keyPath = keyPath
+        return Binding(get: { self[keyPath: keyPath] }, set: { self[keyPath: keyPath] = $0 })
+    }
+}
