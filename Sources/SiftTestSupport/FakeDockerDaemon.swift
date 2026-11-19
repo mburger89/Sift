@@ -173,6 +173,7 @@ public final class FakeDockerDaemon: @unchecked Sendable {
 
     #else
 
+    private struct PipeBox: @unchecked Sendable { let handle: HANDLE }
     private let pipeName: String
 
     public init(routes: [String: Route]) throws {
@@ -181,7 +182,8 @@ public final class FakeDockerDaemon: @unchecked Sendable {
         endpoint = .namedPipe(path: pipeName)
         // Create the first instance now, so a client that connects right away finds the pipe.
         let first = try Self.makeInstance(pipeName)
-        Thread.detachNewThread { [self] in acceptLoop(first) }
+        let box = PipeBox(handle: first)
+        Thread.detachNewThread { [self] in acceptLoop(box.handle) }
     }
 
     private static func makeInstance(_ name: String) throws -> HANDLE {
@@ -207,7 +209,8 @@ public final class FakeDockerDaemon: @unchecked Sendable {
                 CloseHandle(current)
                 continue
             }
-            Thread.detachNewThread { [self] in serve(current) }
+            let box = PipeBox(handle: current)
+            Thread.detachNewThread { [self] in serve(box.handle) }
         }
     }
 
