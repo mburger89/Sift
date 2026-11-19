@@ -1,0 +1,121 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  macos:
+    runs-on: xcode-27
+    env:
+      SIFT_PG_URL: postgresql://postgres@127.0.0.1:55432/postgres
+    steps:
+    - uses: actions/checkout@v7
+    - name: Install libpq and a Postgres server
+      run: |
+        export HOMEBREW_NO_AUTO_UPDATE=1
+        brew install libpq postgresql@17
+        echo "PKG_CONFIG_PATH=$(brew --prefix libpq)/lib/pkgconfig" >> "$GITHUB_ENV"
+    - name: Start Postgres
+      run: |
+        PGBIN="$(brew --prefix postgresql@17)/bin"
+        "$PGBIN/initdb" -D "$RUNNER_TEMP/pgdata" -A trust -U postgres
+        "$PGBIN/pg_ctl" -D "$RUNNER_TEMP/pgdata" -o "-p 55432 -c listen_addresses=127.0.0.1" -l "$RUNNER_TEMP/pg.log" -w start
+    - run: swift build
+    - run: swift test
+    - run: swift run siftpg-probe
+    - name: Stop Postgres
+      if: always()
+      run: "$(brew --prefix postgresql@17)/bin/pg_ctl" -D "$RUNNER_TEMP/pgdata" stop || true
+
+  linux:
+    runs-on: ubuntu-24.04
+    container: swift:6.4-noble
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: sift
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      SIFT_PG_URL: postgresql://postgres:sift@postgres:5432/postgres
+    steps:
+    - uses: actions/checkout@v7
+    - name: Install libpq
+      run: apt-get update && apt-get install -y libpq-dev pkg-config
+    - run: swift build
+    - run: swift test
+    - run: swift run siftpg-probe
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      SIFT_PG_URL: postgresql://postgres@127.0.0.1:55432/postgres
+    steps:
+    - uses: actions/checkout@v7
+    # The installer intermittently leaves `swift` off PATH (the action's
+    # version check fails before any build); one retry after a pause.
+    - id: setup-swift
+      uses: compnerd/gha-setup-swift@v0.5.0
+      continue-on-error: true
+      with:
+        swift-version: swift-6.4.0-release
+        swift-build: 6.4.0-RELEASE
+    - name: Pause before retrying Swift setup
+      if: steps.setup-swift.outcome == 'failure'
+      shell: pwsh
+      run: Start-Sleep -Seconds 30
+    - name: Retry Swift setup
+      if: steps.setup-swift.outcome == 'failure'
+      uses: compnerd/gha-setup-swift@v0.5.0
+      with:
+        swift-version: swift-6.4.0-release
+        swift-build: 6.4.0-RELEASE
+    # The runner image ships PostgreSQL (server, headers, libpq.lib and DLLs). Use it for
+    # both the client and the server. Windows has no pkg-config, so the build gets
+    # the paths by flag; Sources/CLibPQ links `pq`, so libpq.lib is copied to pq.lib.
+    - name: Locate PostgreSQL and stage libpq
+      run: |
+        $pg = $env:PGROOT
+        if (-not $pg -or -not (Test-Path "$pg\include\libpq-fe.h")) {
+          $pg = (Get-ChildItem "C:\Program Files\PostgreSQL" -Directory | Sort-Object Name -Descending | Select-Object -First 1).FullName
+        }
+        Write-Host "PostgreSQL at $pg"
+        Get-ChildItem "$pg\bin" -Filter *.dll | ForEach-Object Name | Write-Host
+        $stage = "C:\pqdev"
+        New-Item -ItemType Directory -Force "$stage\include", "$stage\lib" | Out-Null
+        Copy-Item "$pg\include\*" "$stage\include" -Recurse
+        Copy-Item "$pg\lib\libpq.lib" "$stage\lib\pq.lib"
+        "$pg\bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+        "PGHOME=$pg" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+    - name: Start Postgres
+      run: |
+        & "$env:PGHOME\bin\initdb.exe" -D "$env:RUNNER_TEMP\pgdata" -A trust -U postgres
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        & "$env:PGHOME\bin\pg_ctl.exe" -D "$env:RUNNER_TEMP\pgdata" -o "-p 55432" -l "$env:RUNNER_TEMP\pg.log" -w start
+        exit $LASTEXITCODE
+    - name: Build
+      run: |
+        swift build -Xcc "-IC:\pqdev\include" -Xlinker "-LC:\pqdev\lib"
+        exit $LASTEXITCODE
+    - name: Test
+      run: |
+        swift test -Xcc "-IC:\pqdev\include" -Xlinker "-LC:\pqdev\lib"
+        exit $LASTEXITCODE
+    - name: Probe
+      run: |
+        swift run -Xcc "-IC:\pqdev\include" -Xlinker "-LC:\pqdev\lib" siftpg-probe
+        exit $LASTEXITCODE
+    - name: Stop Postgres
+      if: always()
+      run: |
+        & "$env:PGHOME\bin\pg_ctl.exe" -D "$env:RUNNER_TEMP\pgdata" stop
+        exit 0
