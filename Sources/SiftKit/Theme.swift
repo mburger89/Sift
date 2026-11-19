@@ -12,8 +12,15 @@ struct SidebarFill: ThemeColorKey {
                                     dark: Color(red: 0.12, green: 0.12, blue: 0.14))
 }
 
+/// The strip a connection problem is shown on.
+struct BannerFill: ThemeColorKey {
+    static let defaultValue = Color(light: Color(red: 1, green: 0.93, blue: 0.78),
+                                    dark: Color(red: 0.32, green: 0.25, blue: 0.1))
+}
+
 extension Color {
     static let sidebarFill = Color(SidebarFill.self)
+    static let bannerFill = Color(BannerFill.self)
 }
 
 extension AppModel {

@@ -22,11 +22,7 @@ struct SiftScreen: Component {
         HStack(spacing: 0) {
             SidebarView(model: model)
             Divider()
-            VStack {
-                Text("Select a connection").foregroundColor(.secondary)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .accessibilityIdentifier("detail")
+            DetailArea(model: model)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

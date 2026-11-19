@@ -23,8 +23,8 @@ public final class AppModel {
     public var detailMode: DetailMode = .table
     /// Why saved connections could not be read or written, if they could not.
     public private(set) var storageProblem: String?
-    /// Counts up each time the New Connection form should open.
-    public private(set) var newConnectionRequests = 0
+    /// The form's fields while the inline connection form is open.
+    public var draft: ConnectionDraft?
 
     @ObservationIgnored public let environment: SiftEnvironment
     @ObservationIgnored private var discoveryTask: Task<Void, Never>?
@@ -148,8 +148,29 @@ public final class AppModel {
         persistConnections()
     }
 
-    /// Asks the form to open (New Connection, ⌘N).
-    public func requestNewConnection() { newConnectionRequests += 1 }
+    /// Opens the inline form for a new connection (New Connection, ⌘N).
+    public func beginNewConnection() { draft = ConnectionDraft() }
+
+    /// Opens the inline form for an existing connection.
+    public func beginEditing(_ id: UUID) {
+        guard let connection = connections.first(where: { $0.id == id }) else { return }
+        draft = ConnectionDraft(connection)
+    }
+
+    /// Saves the form's connection, selects it and closes the form; a refusal stays in `draft.problem`.
+    public func saveDraft() {
+        guard let draft else { return }
+        switch draft.connection() {
+        case .success(let connection):
+            addConnection(connection, password: nil)
+            selection = .saved(connection.id)
+            self.draft = nil
+        case .failure(let error):
+            draft.problem = error.message
+        }
+    }
+
+    public func cancelDraft() { draft = nil }
 
     private func persistConnections() {
         do {
