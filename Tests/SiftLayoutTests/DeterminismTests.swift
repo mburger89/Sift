@@ -55,6 +55,9 @@ import Testing
     @Test func fiveHundredTablesStayBounded() {
         let g = randomGraph(seed: 42, n: 500, e: 1000)
         let result = LayeredLayout.layout(g)
+        // Not vacuous: the graph really has long edges and crossings to reduce.
+        #expect(result.stats.dummyNodes > 0)
+        #expect(result.stats.crossingsBefore > 0)
         #expect(result.positions.count == 500)
         #expect(result.stats.dummyNodes <= 20_000)
         #expect(result.stats.sweepsRun <= 24)

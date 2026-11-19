@@ -98,6 +98,24 @@ public enum LayeredLayout {
                 result.routes[edge] = dagRoutes[dagIndex[from * count + to]!]
             }
         }
+
+        var minX = Double.infinity, minY = Double.infinity
+        var maxX = -Double.infinity, maxY = -Double.infinity
+        func include(_ x: Double, _ y: Double) {
+            minX = min(minX, x)
+            minY = min(minY, y)
+            maxX = max(maxX, x)
+            maxY = max(maxY, y)
+        }
+        for (index, id) in canonical.ids.enumerated() {
+            let point = result.positions[id]!
+            include(point.x, point.y)
+            include(point.x + canonical.widths[index], point.y + canonical.heights[index])
+        }
+        for route in dagRoutes { for point in route { include(point.x, point.y) } }
+        if minX <= maxX {
+            result.bounds = LayoutRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+        }
         return result
     }
 }
