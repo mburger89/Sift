@@ -202,7 +202,7 @@ public final class FakeDockerDaemon: @unchecked Sendable {
         while !isStopped {
             guard let current = instance ?? (try? Self.makeInstance(pipeName)) else { return }
             instance = nil
-            let connected = ConnectNamedPipe(current, nil).boolValue || GetLastError() == DWORD(ERROR_PIPE_CONNECTED)
+            let connected = ConnectNamedPipe(current, nil) || GetLastError() == DWORD(ERROR_PIPE_CONNECTED)
             if !connected || isStopped {
                 CloseHandle(current)
                 continue
@@ -223,7 +223,7 @@ public final class FakeDockerDaemon: @unchecked Sendable {
         while !request.suffix(4).elementsEqual(terminator) {
             var count: DWORD = 0
             let ok = buffer.withUnsafeMutableBytes { ReadFile(pipe, $0.baseAddress, 4096, &count, nil) }
-            if !ok.boolValue || count == 0 { return }
+            if !ok || count == 0 { return }
             request += buffer[0..<Int(count)]
         }
         guard let line = Self.requestLine(in: request) else { return }

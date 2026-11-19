@@ -139,7 +139,7 @@ public final class NamedPipeStream: ByteStream, @unchecked Sendable {
             }
             let code = GetLastError()
             if code == DWORD(ERROR_PIPE_BUSY) {
-                if !WaitNamedPipeW(wide, timeoutMilliseconds).boolValue { throw .timedOut }
+                if !WaitNamedPipeW(wide, timeoutMilliseconds) { throw .timedOut }
                 continue
             }
             throw .connectFailed("CreateFileW failed (\(code))")
@@ -158,8 +158,9 @@ public final class NamedPipeStream: ByteStream, @unchecked Sendable {
                 let ok = chunk.withUnsafeMutableBytes {
                     WriteFile(handle, $0.baseAddress, DWORD($0.count), &count, overlapped)
                 }
-                return ok.boolValue
+                return ok
             }
+            guard let done else { throw .connectFailed("broken pipe") }
             offset += Int(done)
         }
     }
@@ -167,25 +168,22 @@ public final class NamedPipeStream: ByteStream, @unchecked Sendable {
     public func read(maxCount: Int) throws(DockerError) -> [UInt8] {
         guard let handle else { return [] }
         var buffer = [UInt8](repeating: 0, count: maxCount)
-        do {
-            let done = try transfer(handle) { overlapped in
-                var count: DWORD = 0
-                let ok = buffer.withUnsafeMutableBytes {
-                    ReadFile(handle, $0.baseAddress, DWORD($0.count), &count, overlapped)
-                }
-                return ok.boolValue
+        let done = try transfer(handle) { overlapped in
+            var count: DWORD = 0
+            let ok = buffer.withUnsafeMutableBytes {
+                ReadFile(handle, $0.baseAddress, DWORD($0.count), &count, overlapped)
             }
-            return Array(buffer[0..<Int(done)])
-        } catch .connectFailed(let message) where message == "broken pipe" {
-            return []
+            return ok
         }
+        guard let done else { return [] }  // broken pipe: the daemon closed its end
+        return Array(buffer[0..<Int(done)])
     }
 
     /// Starts an overlapped operation and waits for it, up to the timeout.
     private func transfer(
         _ handle: HANDLE,
         _ start: (UnsafeMutablePointer<OVERLAPPED>) -> Bool
-    ) throws(DockerError) -> DWORD {
+    ) throws(DockerError) -> DWORD? {
         var overlapped = OVERLAPPED()
         guard let event = CreateEventW(nil, true, false, nil) else { throw .connectFailed("CreateEventW failed") }
         defer { CloseHandle(event) }
@@ -193,7 +191,7 @@ public final class NamedPipeStream: ByteStream, @unchecked Sendable {
         var transferred: DWORD = 0
         if !start(&overlapped) {
             let code = GetLastError()
-            if code == DWORD(ERROR_BROKEN_PIPE) { throw .connectFailed("broken pipe") }
+            if code == DWORD(ERROR_BROKEN_PIPE) { return nil }
             guard code == DWORD(ERROR_IO_PENDING) else { throw .connectFailed("pipe i/o failed (\(code))") }
             if WaitForSingleObject(event, timeoutMilliseconds) == DWORD(WAIT_TIMEOUT) {
                 CancelIoEx(handle, &overlapped)
@@ -201,9 +199,9 @@ public final class NamedPipeStream: ByteStream, @unchecked Sendable {
                 throw .timedOut
             }
         }
-        if !GetOverlappedResult(handle, &overlapped, &transferred, false).boolValue {
+        if !GetOverlappedResult(handle, &overlapped, &transferred, false) {
             let code = GetLastError()
-            if code == DWORD(ERROR_BROKEN_PIPE) { throw .connectFailed("broken pipe") }
+            if code == DWORD(ERROR_BROKEN_PIPE) { return nil }
             throw .connectFailed("pipe i/o failed (\(code))")
         }
         return transferred
