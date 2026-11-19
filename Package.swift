@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .library(name: "SiftCore", targets: ["SiftCore"]),
         .library(name: "SiftPG", targets: ["SiftPG"]),
+        .library(name: "SiftLayout", targets: ["SiftLayout"]),
         .executable(name: "siftpg-probe", targets: ["siftpg-probe"]),
     ],
     targets: [
@@ -17,8 +18,10 @@ let package = Package(
         ),
         .target(name: "SiftCore"),
         .target(name: "SiftPG", dependencies: ["CLibPQ", "SiftCore"]),
+        .target(name: "SiftLayout"),
         .executableTarget(name: "siftpg-probe", dependencies: ["SiftPG", "SiftCore"]),
         .testTarget(name: "SiftPGTests", dependencies: ["SiftPG", "SiftCore"]),
+        .testTarget(name: "SiftLayoutTests", dependencies: ["SiftLayout"]),
     ],
     swiftLanguageModes: [.v6]
 )
