@@ -1,11 +1,20 @@
 import CLibPQ
 import Dispatch
+import Foundation
 import SiftCore
 
 /// A failure from libpq, carrying `PQerrorMessage` (or `PQresultErrorMessage`).
 public struct PGError: Error, Sendable, CustomStringConvertible {
     public var message: String
-    public init(_ message: String) { self.message = message }
+    /// The five-character SQLSTATE of a server error, or nil (a dropped socket has none).
+    public var sqlState: String?
+    /// True when the connection itself is gone (`PQstatus` is `CONNECTION_BAD` after the failure).
+    public var isConnectionLost: Bool
+    public init(_ message: String, sqlState: String? = nil, isConnectionLost: Bool = false) {
+        self.message = message
+        self.sqlState = sqlState
+        self.isConnectionLost = isConnectionLost
+    }
     public var description: String { message }
 }
 
@@ -19,8 +28,27 @@ public final class PGConnection: @unchecked Sendable {
     private let cancelHandle: OpaquePointer?
 
     /// Connects with a libpq connection string or URL.
-    public init(conninfo: String) throws {
-        guard let c = PQconnectdb(conninfo) else { throw PGError("PQconnectdb returned nil") }
+    public convenience init(conninfo: String) throws {
+        try self.init(connected: PQconnectdb(conninfo))
+    }
+
+    /// Connects with keyword and value arrays (`PQconnectdbParams`, `expand_dbname = 0`), so no
+    /// conninfo string is ever built from parts and no password sits inside a string that might be logged.
+    public convenience init(parameters: PGConnectionParameters) throws {
+        let pairs = parameters.keywordValues()
+        let keys: [UnsafeMutablePointer<CChar>?] = pairs.map { strdup($0.0) } + [nil]
+        let values: [UnsafeMutablePointer<CChar>?] = pairs.map { strdup($0.1) } + [nil]
+        defer {
+            for k in keys { free(k) }
+            for v in values { free(v) }
+        }
+        let k: [UnsafePointer<CChar>?] = keys.map { $0.map { UnsafePointer($0) } }
+        let v: [UnsafePointer<CChar>?] = values.map { $0.map { UnsafePointer($0) } }
+        try self.init(connected: PQconnectdbParams(k, v, 0))
+    }
+
+    private init(connected c: OpaquePointer?) throws {
+        guard let c else { throw PGError("PQconnectdb returned nil") }
         if PQstatus(c) != CONNECTION_OK {
             let message = String(cString: PQerrorMessage(c))
             PQfinish(c)
@@ -40,36 +68,67 @@ public final class PGConnection: @unchecked Sendable {
         queue.sync { conn.map { Int(PQserverVersion($0)) } ?? 0 }
     }
 
+    /// True once libpq reports the connection as no longer usable.
+    public var isBroken: Bool {
+        queue.sync { conn.map { PQstatus($0) != CONNECTION_OK } ?? true }
+    }
+
+    /// The server process id of this session.
+    public var backendPID: Int32 {
+        queue.sync { conn.map { PQbackendPID($0) } ?? 0 }
+    }
+
     /// Runs one statement with text parameters (`nil` is NULL) and text results.
     public func query(_ sql: String, params: [String?] = []) throws -> ResultPage {
-        try queue.sync {
-            guard let conn else { throw PGError("connection is closed") }
-            // C strings for the parameters, freed after the call.
-            let buffers: [UnsafeMutablePointer<CChar>?] = params.map { p in
-                guard let p else { return nil }
-                let bytes = Array(p.utf8CString)
-                let buf = UnsafeMutablePointer<CChar>.allocate(capacity: bytes.count)
-                buf.initialize(from: bytes, count: bytes.count)
-                return buf
-            }
-            defer { for b in buffers { b?.deallocate() } }
-            let values: [UnsafePointer<CChar>?] = buffers.map { $0.map { UnsafePointer($0) } }
+        try queue.sync { try run(sql, params: params) }
+    }
 
-            guard let result = PQexecParams(
-                conn, sql, Int32(params.count), nil, values, nil, nil, 0
-            ) else {
-                throw PGError(String(cString: PQerrorMessage(conn)).trimmingTrailingNewlines())
+    /// The same as `query`, off the caller's thread. The queue stays serial.
+    public func execute(_ sql: String, params: [String?] = []) async throws -> ResultPage {
+        try await withCheckedThrowingContinuation { (c: CheckedContinuation<ResultPage, any Error>) in
+            queue.async {
+                do { c.resume(returning: try self.run(sql, params: params)) } catch { c.resume(throwing: error) }
             }
-            defer { PQclear(result) }
+        }
+    }
 
-            switch PQresultStatus(result) {
-            case PGRES_TUPLES_OK:
-                return Self.page(from: result)
-            case PGRES_COMMAND_OK, PGRES_EMPTY_QUERY:
-                return ResultPage(columns: [], rows: [])
-            default:
-                throw PGError(String(cString: PQresultErrorMessage(result)).trimmingTrailingNewlines())
-            }
+    // Runs on `queue`.
+    private func run(_ sql: String, params: [String?]) throws -> ResultPage {
+        guard let conn else { throw PGError("connection is closed", isConnectionLost: true) }
+        // C strings for the parameters, freed after the call.
+        let buffers: [UnsafeMutablePointer<CChar>?] = params.map { p in
+            guard let p else { return nil }
+            let bytes = Array(p.utf8CString)
+            let buf = UnsafeMutablePointer<CChar>.allocate(capacity: bytes.count)
+            buf.initialize(from: bytes, count: bytes.count)
+            return buf
+        }
+        defer { for b in buffers { b?.deallocate() } }
+        let values: [UnsafePointer<CChar>?] = buffers.map { $0.map { UnsafePointer($0) } }
+
+        guard let result = PQexecParams(
+            conn, sql, Int32(params.count), nil, values, nil, nil, 0
+        ) else {
+            throw PGError(
+                String(cString: PQerrorMessage(conn)).trimmingTrailingNewlines(),
+                isConnectionLost: PQstatus(conn) == CONNECTION_BAD)
+        }
+        defer { PQclear(result) }
+
+        switch PQresultStatus(result) {
+        case PGRES_TUPLES_OK:
+            return Self.page(from: result)
+        case PGRES_COMMAND_OK, PGRES_EMPTY_QUERY:
+            return ResultPage(columns: [], rows: [])
+        default:
+            var state: String?
+            if let f = PQresultErrorField(result, Int32(UInt8(ascii: "C"))) { state = String(cString: f) }
+            // Not classified by SQLSTATE: a dropped socket has none.
+            return try {
+                throw PGError(
+                    String(cString: PQresultErrorMessage(result)).trimmingTrailingNewlines(),
+                    sqlState: state, isConnectionLost: PQstatus(conn) == CONNECTION_BAD)
+            }()
         }
     }
 
