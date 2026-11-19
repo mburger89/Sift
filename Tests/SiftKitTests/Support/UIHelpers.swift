@@ -27,6 +27,11 @@ extension TestWindow {
     /// Whether a sidebar row exists (a collapsed group's children do not).
     func hasRow(_ token: String) -> Bool { (try? sidebarRow(token)) != nil }
 
+    /// Whether an element shows exactly `text` (a static text's text is its value; a button's is its label).
+    func shows(_ text: String) -> Bool {
+        ((try? elements { $0.label == text || $0.value == text }) ?? []).isEmpty == false
+    }
+
     /// Every element whose label, value or identifier contains `text`: for "this text appears nowhere".
     func elementsContaining(_ text: String) throws -> [TestElement] {
         try elements { element in

@@ -64,6 +64,7 @@ struct PreviewHeader: Component {
         HStack(spacing: 0) {
             ForEach(0..<columns.count, id: \.self) { i in
                 Text(columns[i].name).font(size: 12).foregroundColor(.secondary)
+                    .accessibilityIdentifier("preview.header.\(i)")
                     .frame(width: Pixels(PreviewSection.cellWidth), alignment: .leading)
             }
         }

@@ -55,6 +55,12 @@ public final class AppModel {
         }
     }
 
+    /// Refresh (⌘R): looks for containers again and re-reads the schema of every open connection.
+    public func refresh() async {
+        await refreshDiscovery()
+        for session in sessions.values.sorted(by: { $0.title < $1.title }) { await session.refreshSchema() }
+    }
+
     static func describe(discovery error: any Error) -> (String, String?) {
         switch error as? DockerError {
         case .noEndpoint: return ("Docker not found", "No Docker or OrbStack socket was found")

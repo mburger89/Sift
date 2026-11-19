@@ -109,6 +109,18 @@ public final class DatabaseSession {
         }
     }
 
+    /// Reads the schema again, and the previews that are showing: a table was added, or rows changed.
+    public func refreshSchema() async {
+        guard let source, state == .ready else { return }
+        do {
+            snapshot = try await source.snapshot()
+        } catch {
+            _ = noticeLoss(error, of: source)
+            return
+        }
+        for id in rows.keys.sorted() { await loadRows(id, force: true) }
+    }
+
     /// Counts a relation's rows exactly, in a read-only transaction. `cancelCount()` stops it.
     public func countExactly(_ id: RelationID) async {
         guard let source, state == .ready else { return }

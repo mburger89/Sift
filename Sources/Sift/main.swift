@@ -21,5 +21,6 @@ func makeApp() throws -> App {
 let model = AppModel(environment: .live())
 model.start()
 let app = try makeApp()
+installSiftCommands(on: app, model: model)
 try app.openWindow(title: "Sift", size: siftWindowSize, minSize: siftMinimumSize) { siftRootView(model: model) }
 app.run()

@@ -28,6 +28,23 @@ func siftWindow(model: AppModel, size: Size<Pixels> = siftWindowSize, recordsLay
     return window
 }
 
+/// The app and its window together, with the menu bar's commands installed as `main.swift` installs them:
+/// what a test of a shortcut needs.
+@MainActor
+func siftApp(model: AppModel) throws -> (app: TestApp, window: TestWindow) {
+    #if os(Linux) || os(Windows)
+    let resolver = try testFontResolver()
+    let testApp = try TestApp(textSystem: { PortableTextSystem(resolver: resolver) })
+    #else
+    let testApp = try TestApp()
+    #endif
+    installSiftCommands(on: testApp.app, model: model)
+    let window = try testApp.openWindow(title: "Sift", size: siftWindowSize, minSize: siftMinimumSize) { siftRootView(model: model) }
+    window.tick()
+    window.tick()
+    return (testApp, window)
+}
+
 /// Any element tree in a headless window with the same text setup as `siftWindow`.
 @MainActor
 func siftTestWindow<Content: Element>(size: Size<Pixels> = Size(width: Pixels(400), height: Pixels(300)),
