@@ -1,0 +1,157 @@
+import SiftCore
+
+/// The schema snapshot of the integration fixture, built by hand. It mirrors the
+/// fixture DDL (plan section 6, task B4); the live introspection test proves the
+/// two agree, with OIDs and estimates zeroed.
+public enum FixtureSnapshot {
+    /// 13 relations (partitions are hidden) and 8 foreign keys.
+    public static func shop(schemaA: String = "shop", schemaB: String = "tagging") -> SchemaSnapshot {
+        let a = schemaA
+        let b = schemaB
+        func id(_ name: String) -> RelationID { RelationID(a, name) }
+
+        func col(
+            _ name: String, _ n: Int, _ type: String, null: Bool = true, def: String? = nil,
+            identity: IdentityKind? = nil, generated: Bool = false, isEnum: Bool = false
+        ) -> ColumnInfo {
+            ColumnInfo(
+                name: name, ordinal: n, typeName: type, isNullable: null, defaultExpression: def,
+                identity: identity, isGenerated: generated, isEnum: isEnum)
+        }
+        func pkIndex(_ table: String, _ cols: [String]) -> IndexInfo {
+            IndexInfo(
+                name: "\(table)_pkey", columns: cols, isUnique: true, isPrimary: true, method: "btree",
+                definition: "CREATE UNIQUE INDEX \(table)_pkey ON \(table) USING btree (\(cols.joined(separator: ", ")))")
+        }
+        func table(
+            _ name: String, schema: String? = nil, kind: RelationKind = .table,
+            estimate: RowEstimate = .estimated(0), columns: [ColumnInfo], pk: [String]? = nil,
+            unique: [KeyConstraint] = [], indexes: [IndexInfo] = []
+        ) -> RelationInfo {
+            RelationInfo(
+                id: RelationID(schema ?? a, name), kind: kind, rowEstimate: estimate, columns: columns,
+                primaryKey: pk.map { KeyConstraint(name: "\(name)_pkey", columns: $0) },
+                uniqueConstraints: unique,
+                indexes: (pk.map { [pkIndex(name, $0)] } ?? []) + indexes)
+        }
+        func fk(
+            _ name: String, _ from: String, _ fromCols: [String], to: RelationID, _ toCols: [String],
+            onDelete: ForeignKeyAction = .noAction
+        ) -> ForeignKeyInfo {
+            ForeignKeyInfo(
+                name: name, from: id(from), fromColumns: fromCols, to: to, toColumns: toCols, onDelete: onDelete)
+        }
+
+        let tags = table(
+            "tags", schema: b,
+            columns: [col("id", 1, "integer", null: false, def: "nextval('tags_id_seq'::regclass)"), col("label", 2, "text")],
+            pk: ["id"], unique: [KeyConstraint(name: "tags_label_key", columns: ["label"])],
+            indexes: [
+                IndexInfo(
+                    name: "tags_label_key", columns: ["label"], isUnique: true, isPrimary: false, method: "btree",
+                    definition: "CREATE UNIQUE INDEX tags_label_key ON tags USING btree (label)")
+            ])
+        let customers = table(
+            "customers",
+            columns: [
+                col("id", 1, "bigint", null: false, def: "nextval('customers_id_seq'::regclass)"),
+                col("email", 2, "text", null: false),
+                col("created_at", 3, "timestamp with time zone", null: false, def: "now()"),
+            ],
+            pk: ["id"], unique: [KeyConstraint(name: "customers_email_key", columns: ["email"])],
+            indexes: [
+                IndexInfo(
+                    name: "customers_email_key", columns: ["email"], isUnique: true, isPrimary: false, method: "btree",
+                    definition: "CREATE UNIQUE INDEX customers_email_key ON customers USING btree (email)")
+            ])
+        let products = table(
+            "products",
+            columns: [
+                col("id", 1, "uuid", null: false), col("name", 2, "character varying(200)", null: false),
+                col("tags", 3, "text[]"), col("price", 4, "numeric(12,2)"),
+            ],
+            pk: ["id"],
+            indexes: [
+                IndexInfo(
+                    name: "products_lower_name_idx", columns: [], isUnique: false, isPrimary: false, method: "btree",
+                    definition: "CREATE INDEX products_lower_name_idx ON products USING btree (lower((name)::text))")
+            ])
+        let orders = table(
+            "orders",
+            columns: [
+                col("id", 1, "bigint", null: false, identity: .always),
+                col("customer_id", 2, "bigint", null: false),
+                col("status", 3, "order_status", null: false, def: "'new'::order_status", isEnum: true),
+                col("total", 4, "numeric(12,2)"),
+                col("total_cents", 5, "bigint", generated: true),
+            ],
+            pk: ["id"],
+            indexes: [
+                IndexInfo(
+                    name: "orders_open_idx", columns: ["customer_id"], isUnique: false, isPrimary: false,
+                    method: "btree", predicate: "(status <> 'done'::order_status)",
+                    definition:
+                        "CREATE INDEX orders_open_idx ON orders USING btree (customer_id) WHERE (status <> 'done'::order_status)")
+            ])
+        let orderItems = table(
+            "order_items",
+            columns: [
+                col("order_id", 1, "bigint", null: false), col("product_id", 2, "uuid", null: false),
+                col("qty", 3, "integer", null: false),
+            ],
+            pk: ["product_id", "order_id"])
+        let shipments = table(
+            "shipments",
+            columns: [
+                col("id", 1, "integer", null: false, def: "nextval('shipments_id_seq'::regclass)"),
+                col("order_id", 2, "bigint", null: false), col("product_id", 3, "uuid", null: false),
+            ],
+            pk: ["id"])
+        let employees = table(
+            "employees",
+            columns: [
+                col("id", 1, "integer", null: false, def: "nextval('employees_id_seq'::regclass)"),
+                col("manager_id", 2, "integer"),
+            ],
+            pk: ["id"])
+        let productTags = table(
+            "product_tags",
+            columns: [col("product_id", 1, "uuid", null: false), col("tag_id", 2, "integer", null: false)],
+            pk: ["product_id", "tag_id"])
+        let events = table(
+            "events", kind: .partitionedTable,
+            columns: [
+                col("id", 1, "bigint", null: false), col("customer_id", 2, "bigint"),
+                col("at", 3, "timestamp with time zone", null: false),
+            ],
+            pk: ["id", "at"])
+        let weird = table("Weird \"Name\"", columns: [col("id", 1, "integer", null: false)], pk: ["id"])
+        let neverAnalyzed = table(
+            "never_analyzed", estimate: .unknown, columns: [col("id", 1, "integer")])
+        let recentOrders = table(
+            "recent_orders", kind: .view, columns: [col("id", 1, "bigint"), col("customer_id", 2, "bigint")])
+        let customerTotals = table(
+            "customer_totals", kind: .materializedView,
+            columns: [col("customer_id", 1, "bigint"), col("total", 2, "numeric")])
+
+        let foreignKeys = [
+            fk("orders_customer_id_fkey", "orders", ["customer_id"], to: id("customers"), ["id"], onDelete: .cascade),
+            fk("order_items_order_id_fkey", "order_items", ["order_id"], to: id("orders"), ["id"]),
+            fk("order_items_product_id_fkey", "order_items", ["product_id"], to: id("products"), ["id"]),
+            fk(
+                "shipments_product_id_order_id_fkey", "shipments", ["product_id", "order_id"],
+                to: id("order_items"), ["product_id", "order_id"]),
+            fk("employees_manager_id_fkey", "employees", ["manager_id"], to: id("employees"), ["id"]),
+            fk("product_tags_product_id_fkey", "product_tags", ["product_id"], to: id("products"), ["id"]),
+            fk("product_tags_tag_id_fkey", "product_tags", ["tag_id"], to: RelationID(b, "tags"), ["id"]),
+            fk("events_customer_id_fkey", "events", ["customer_id"], to: id("customers"), ["id"]),
+        ]
+        return SchemaSnapshot(
+            serverVersion: 170000, schemas: [a, b],
+            relations: [
+                tags, customers, products, orders, orderItems, shipments, employees, productTags, events, weird,
+                neverAnalyzed, recentOrders, customerTotals,
+            ],
+            foreignKeys: foreignKeys)
+    }
+}
