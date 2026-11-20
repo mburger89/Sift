@@ -47,8 +47,9 @@ struct SidebarTests {
         try window.toggleRow("schema:container:shop-db:shop")
         try await window.runUntilIdle()
         #expect(rig.connector.targets.count == 1)
-        _ = try window.element(label: "customers")
-        _ = try window.element(label: "recent_orders")
+        // The database is selected, so the map is open and names the tables too: the rows are the sidebar's.
+        _ = try window.sidebarRow("relation:container:shop-db:shop.customers")
+        _ = try window.sidebarRow("relation:container:shop-db:shop.recent_orders")
     }
 
     @Test func anOutlineOf500TablesRealizesOnlyVisibleRows() async throws {

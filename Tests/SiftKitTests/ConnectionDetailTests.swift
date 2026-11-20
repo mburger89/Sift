@@ -43,6 +43,11 @@ struct ConnectionDetailTests {
         try await rig.until("connected") { rig.connector.targets.count == 1 }
         try await window.runUntilIdle()
         #expect(rig.model.sessions[key]?.state == .ready)
+        // A connected database opens its map; the connection's details are the Table mode of the same node.
+        #expect(rig.model.detailMode == .map)
+        _ = try window.element(identifier: "map")
+        rig.model.setDetailMode(.table)
+        try await window.runUntilIdle()
         // The button is disabled while connected, and the detail says so.
         #expect(try window.element(label: "Connect").isEnabled == false)
         _ = try window.element(label: "Connected, read-only")
