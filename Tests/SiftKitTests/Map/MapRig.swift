@@ -31,11 +31,14 @@ struct MapRig {
         try await window.runUntilIdle()
         window.advance(by: 1)
         for _ in 0..<3 { window.tick() }
-        // The map's size settles over the first frames (the toolbar finds its height); wait for it.
+        // The map's size settles over the first frames (the toolbar finds its height, and on the portable text system a
+        // forced redraw lays it out once more); redraw until it has held for three frames.
         var last = map.viewSize
-        for _ in 0..<10 {
+        var steady = 0
+        for _ in 0..<40 where steady < 3 {
+            window.window.setNeedsRedraw()
             window.tick()
-            if map.viewSize == last { break }
+            if map.viewSize == last { steady += 1 } else { steady = 0 }
             last = map.viewSize
         }
     }
