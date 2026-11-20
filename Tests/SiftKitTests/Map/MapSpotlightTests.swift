@@ -46,7 +46,7 @@ struct MapSpotlightTests {
         #expect(shown.count > 20)
         #expect(spot.count >= 3, "spot \\(spot.count)")
         let point = try rig.centre(of: layout.graph.ids[hub])
-        let work = Work.of(rig) {
+        let work = await Work.of(rig) {
             rig.window.hover(at: point)
             rig.window.tick()
         }

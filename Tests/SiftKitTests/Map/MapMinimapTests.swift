@@ -17,7 +17,7 @@ struct MapMinimapTests {
         let before = viewport.frame.origin
         let built = MinimapCards.bodyCount
         rig.map.panBy(400, 300, scale: 1)
-        rig.window.tick()
+        await rig.settle()
         let moved = try rig.window.element(identifier: "map.minimap.viewport").frame.origin
         #expect(moved != before, "the viewport outline moved")
         #expect(MinimapCards.bodyCount == built)

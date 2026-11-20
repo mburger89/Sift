@@ -11,7 +11,7 @@ struct MapDragTests {
     let orders = RelationID("shop", "orders")
 
     /// A press at `from`, `steps` drag events towards `to` with a frame after each, no release: the work of each step.
-    func dragSteps(_ rig: MapRig, from: Point<Pixels>, to: Point<Pixels>, steps: Int) -> [Work] {
+    func dragSteps(_ rig: MapRig, from: Point<Pixels>, to: Point<Pixels>, steps: Int) async -> [Work] {
         let window = rig.window
         window.send(.mouseMoved(MouseEvent(position: from, timestamp: window.now)))
         window.send(.mouseDown(MouseEvent(position: from, timestamp: window.now)))
@@ -19,7 +19,7 @@ struct MapDragTests {
         for step in 1...steps {
             let t = Float(step) / Float(steps)
             let position = Point(x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t)
-            out.append(Work.of(rig) {
+            out.append(await Work.of(rig) {
                 window.send(.mouseDragged(MouseEvent(position: position, timestamp: window.now)))
                 window.advanceFrames(1)
             })
@@ -58,14 +58,15 @@ struct MapDragTests {
         #expect(rig.map.culled.nodes.count > 20)
         #expect(rig.map.culled.tiles.count > 10)
         let from = try rig.centre(of: id)
-        let steps = dragSteps(rig, from: from, to: Point(x: from.x + 160, y: from.y + 80), steps: 8)
+        let steps = await dragSteps(rig, from: from, to: Point(x: from.x + 160, y: from.y + 80), steps: 8)
         #expect(rig.map.dragged == id)
         // The first step moves the card's edges out of the tiles (a tile rebuild); each later one rebuilds only the card.
         for (n, work) in steps.enumerated() where n >= 1 {
             #expect(work.cards == 1, "step \(n + 1): cards \(work.cards)")
             #expect(work.tiles == 0, "step \(n + 1): tiles \(work.tiles)")
             #expect(work.rasterized < 1280 * 800 / 4, "step \(n + 1): rasterized \(work.rasterized)")
-            #expect(work.frames.count == 1)
+            // A frame per step; the Observation hop on Linux and Windows can split one step's redraw across two.
+            #expect((1...2).contains(work.frames.count), "step \(n + 1): frames \(work.frames.count)")
         }
         #expect(!rig.map.liveEdges.isEmpty)
         release(rig, at: Point(x: from.x + 160, y: from.y + 80))

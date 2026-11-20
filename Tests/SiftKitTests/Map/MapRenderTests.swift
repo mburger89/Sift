@@ -30,7 +30,7 @@ struct MapRenderTests {
         #expect(try rig.cardElements().count == rig.map.culled.nodes.count)
         #expect(rig.window.lastFrameWork.rects > 0)
 
-        let work = Work.of(rig) {
+        let work = await Work.of(rig) {
             for _ in 0..<5 {
                 rig.window.window.setNeedsRedraw()
                 rig.window.tick()
@@ -50,7 +50,7 @@ struct MapRenderTests {
 
         // The part that is not tiles is the same on a 13-table map: it is the toolbar, the minimap and the lists.
         let small = try await MapRig(schema: FixtureSnapshot.shop())
-        let smallWork = Work.of(small) {
+        let smallWork = await Work.of(small) {
             for _ in 0..<3 {
                 small.window.window.setNeedsRedraw()
                 small.window.tick()
@@ -72,7 +72,7 @@ struct MapRenderTests {
         let before = rig.map.cull
         let tilesBefore = rig.tilesMeetingTheViewport()
         let start = rig.map.geometry.pan
-        let work = Work.of(rig) {
+        let work = await Work.of(rig) {
             rig.map.panBy(7, 3, scale: 1)
             rig.window.tick()
         }
@@ -91,14 +91,14 @@ struct MapRenderTests {
     @Test func aZoomStepRebuildsNoCard() async throws {
         let rig = try await MapRig.atTable("t0100")
         rig.map.zoom(by: 0.6, about: MapRig.screen, scale: 1)
-        for _ in 0..<3 { rig.window.tick() }
+        await rig.settle()
         #expect(rig.map.lod == .full)
         #expect(rig.map.geometry.zoomBucket == 0.5)
         #expect(rig.map.culled.nodes.count > 20)
         #expect(rig.map.culled.tiles.count > 10)
         let cullBefore = rig.map.cull
         let zoomBefore = rig.map.geometry.zoom
-        let work = Work.of(rig) {
+        let work = await Work.of(rig) {
             rig.map.zoom(by: 1.08, about: MapRig.screen, scale: 1)
             rig.window.tick()
         }
@@ -114,11 +114,11 @@ struct MapRenderTests {
     @Test func crossingALevelOfDetailRebuildsEachVisibleCardOnce() async throws {
         let rig = try await MapRig.atTable("t0100")
         rig.map.zoom(by: 0.6, about: MapRig.screen, scale: 1)
-        for _ in 0..<3 { rig.window.tick() }
+        await rig.settle()
         #expect(rig.map.lod == .full)
         let visible = rig.map.culled.nodes.count
         #expect(visible > 20)
-        let crossing = Work.of(rig) {
+        let crossing = await Work.of(rig) {
             rig.map.zoom(by: 0.5 / rig.map.geometry.zoom, about: MapRig.screen, scale: 1)
             rig.window.tick()
         }
@@ -126,7 +126,7 @@ struct MapRenderTests {
         #expect(rig.map.geometry.zoom == 0.5)
         #expect(crossing.cards == rig.map.culled.nodes.count)
         // The next step inside the band rebuilds none.
-        let within = Work.of(rig) {
+        let within = await Work.of(rig) {
             rig.map.zoom(by: 1.08, about: MapRig.screen, scale: 1)
             rig.window.tick()
         }
@@ -162,7 +162,7 @@ struct MapRenderTests {
         #expect(!rig.window.has("map.card.s0.t0000.count"))
         // At a zoom of 1 the same card has its rows.
         rig.map.flyTo(RelationID("s0", "t0000"), size: rig.map.viewSize!)
-        for _ in 0..<3 { rig.window.tick() }
+        await rig.settle()
         #expect(rig.window.has("map.card.s0.t0000.rows"))
     }
 }

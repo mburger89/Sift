@@ -115,7 +115,7 @@ struct MapChromeTests {
     @Test func aResizeKeepsTheCentre() async throws {
         let rig = try await MapRig(schema: FixtureSnapshot.shop())
         rig.map.flyTo(orders, size: rig.map.viewSize!)
-        rig.window.tick()
+        await rig.settle()
         let before = try rig.window.element(identifier: "map.card.shop.orders")
         let mapBefore = try rig.window.element(identifier: "map")
         let offsetBefore = rig.window.centre(of: before).x - rig.window.centre(of: mapBefore).x
@@ -166,7 +166,7 @@ struct MapEndToEndTests {
         // Pan ×5.
         var panRasterized = 0
         for _ in 0..<5 {
-            let work = Work.of(rig) { rig.map.panBy(7, 3, scale: 1); rig.window.tick() }
+            let work = await Work.of(rig) { rig.map.panBy(7, 3, scale: 1); rig.window.tick() }
             panRasterized += work.rasterized
             allFrames.append(work)
         }
@@ -174,7 +174,7 @@ struct MapEndToEndTests {
 
         // Zoom ×3.
         for _ in 0..<3 {
-            allFrames.append(Work.of(rig) {
+            allFrames.append(await Work.of(rig) {
                 rig.map.zoom(by: 1.08, about: MapRig.screen, scale: 1)
                 rig.window.tick()
             })
@@ -186,7 +186,7 @@ struct MapEndToEndTests {
             return rig.map.geometry.visibleCanvasRect(rig.map.viewSize!).inset(by: 30).contains(c)
         }!
         let hovered = rig.map.layout!.graph.ids[hubless]
-        allFrames.append(Work.of(rig) {
+        allFrames.append(await Work.of(rig) {
             rig.window.hover(at: try! rig.centre(of: hovered))
             rig.window.tick()
         })
@@ -194,12 +194,12 @@ struct MapEndToEndTests {
 
         // Drag one card.
         let from = try rig.centre(of: hovered)
-        allFrames.append(Work.of(rig) { rig.window.drag(from: from, to: Point(x: from.x + 50, y: from.y + 25), steps: 4) })
+        allFrames.append(await Work.of(rig) { rig.window.drag(from: from, to: Point(x: from.x + 50, y: from.y + 25), steps: 4) })
         #expect(rig.rig.mapPositions.saves == 1)
 
         // Fly to another table.
         let other = RelationID("s3", "t0233")
-        allFrames.append(Work.of(rig) {
+        allFrames.append(await Work.of(rig) {
             rig.map.flyTo(other, size: rig.map.viewSize!)
             rig.window.tick()
         })

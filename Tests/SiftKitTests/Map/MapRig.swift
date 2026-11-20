@@ -37,10 +37,21 @@ struct MapRig {
         var steady = 0
         for _ in 0..<40 where steady < 3 {
             window.window.setNeedsRedraw()
+            await yieldToObservation()
             window.tick()
             if map.viewSize == last { steady += 1 } else { steady = 0 }
             last = map.viewSize
         }
+    }
+
+    /// Lets pending Observation invalidations reach the window (see `Work.of`), then draws what they asked for.
+    func settle() async {
+        await yieldToObservation()
+        for _ in 0..<3 { window.tick() }
+    }
+
+    func yieldToObservation() async {
+        for _ in 0..<8 { await Task.yield() }
     }
 
     /// Frames drawn by `body`: the work counters of each.
@@ -60,7 +71,7 @@ extension MapRig {
         let rig = try await MapRig(schema: schema)
         let target = schema.relations.first { $0.id.name == name }!.id
         rig.map.flyTo(target, size: rig.map.viewSize!)
-        for _ in 0..<3 { rig.window.tick() }
+        await rig.settle()
         return rig
     }
 
@@ -72,13 +83,11 @@ extension MapRig {
         for n in stride(from: 100, to: 480, by: 13) {
             let id = RelationID("s\(n % 5)", "t" + String(repeating: "0", count: 4 - String(n).count) + String(n))
             rig.map.flyTo(id, size: rig.map.viewSize!)
-            rig.window.tick()
-            rig.window.tick()
+            await rig.settle()
             var panned = rig.map.geometry
             for _ in 0..<pans { panned.panBy(7, 3, scale: 1) }
             if rig.map.culled.nodes.count > 20, rig.map.culled.tiles.count > 10,
                rig.tilesMeetingTheViewport(panned) == rig.tilesMeetingTheViewport() {
-                for _ in 0..<3 { rig.window.tick() }
                 return rig
             }
         }
@@ -133,10 +142,16 @@ struct Work {
     var measures: [Int] { frames.map(\.layoutMeasureCalls) }
 
     /// Runs `body` and reports the card and tile bodies that ran and the frames it drew.
+    ///
+    /// A model write invalidates the window through Observation; on Linux and Windows that arrives on a later main-actor
+    /// turn, not inside the write (on macOS it is synchronous), so the body's frame is drawn after a few yields.
     @MainActor
-    static func of(_ rig: MapRig, _ body: () -> Void) -> Work {
+    static func of(_ rig: MapRig, _ body: () -> Void) async -> Work {
         let c = TableCardView.bodyCount, t = EdgeTileView.bodyCount
-        let frames = rig.frames(body)
-        return Work(cards: TableCardView.bodyCount - c, tiles: EdgeTileView.bodyCount - t, frames: frames)
+        rig.window.resetFrameWork()
+        body()
+        await rig.yieldToObservation()
+        rig.window.tick()
+        return Work(cards: TableCardView.bodyCount - c, tiles: EdgeTileView.bodyCount - t, frames: rig.window.frameWork)
     }
 }
