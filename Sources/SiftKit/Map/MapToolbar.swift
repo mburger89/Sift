@@ -33,6 +33,7 @@ struct MapToolbar: Component {
                 .accessibilityLabel("Zoom out")
                 .accessibilityIdentifier("map.zoomOut")
             Text(verbatim: "\(Int((map.geometry.zoom * 100).rounded()))%").font(size: 12).foregroundColor(.secondary)
+                .frame(width: Pixels(40), alignment: .trailing)
                 .accessibilityIdentifier("map.zoom")
             Button("+") { map.zoomIn() }
                 .accessibilityLabel("Zoom in")
@@ -49,8 +50,10 @@ struct MapToolbar: Component {
             Button("Reset layout") { Task { @MainActor in await map.resetLayout() } }
                 .accessibilityIdentifier("map.reset")
         }
-        .padding(inset(12, 8))
-        .frame(maxWidth: .infinity)
+        .padding(inset(12, 0))
+        // A fixed height: the map under it must not change size when a label (the zoom, a button) changes width or
+        // wraps on a font with wider letters, because a resize pans the map.
+        .frame(maxWidth: .infinity, minHeight: Pixels(48), maxHeight: Pixels(48))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("map.toolbar")
     }
