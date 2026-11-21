@@ -100,7 +100,7 @@ import Testing
         #expect(q.keyKind == .ctid && q.selectedColumnCount == 6)
         let after: [SiftValue] = [.int(1), .null, .text("t"), .null, .text("x"), .text("(3,7)")]
         let (sql, params) = q.pageSQL(index: 1, size: 500, query: GridQuery(), after: after)
-        #expect(sql.contains("ctid::text FROM"))
+        #expect(sql.contains("ctid::text AS \"_sift_ctid\" FROM"))
         #expect(sql.contains("WHERE ctid > $1::tid ORDER BY ctid LIMIT 500"), "\(sql)")
         #expect(params == ["(3,7)"])
     }

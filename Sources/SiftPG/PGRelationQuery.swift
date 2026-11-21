@@ -88,7 +88,8 @@ public struct PGRelationQuery: Sendable {
 
     private func selectList() -> String {
         var items = relation.columns.map { PGIdentifier.quote($0.name) }
-        if keyKind == .ctid { items.append("ctid::text") }
+        // Aliased: a bare `ORDER BY ctid` would sort by an output column of that name (text order), not by address.
+        if keyKind == .ctid { items.append("ctid::text AS \"_sift_ctid\"") }
         return items.isEmpty ? "1" : items.joined(separator: ", ")
     }
 

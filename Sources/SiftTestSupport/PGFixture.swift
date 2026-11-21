@@ -45,6 +45,60 @@ public enum PGFixture {
         return try await body(names, readOnly)
     }
 
+    /// Creates one throwaway schema of tables for paging tests, runs `body` with read-only parameters, then drops it.
+    ///
+    /// - `big`: 20 000 rows, `id` primary key, `label` text, `n` int.
+    /// - `nokey`: 1 300 rows, no key and no unique index (`ctid` paging), `a` int, `b` text.
+    /// - `typed`: a jsonb, an enum, a uuid and a timestamptz column.
+    /// - `sparse`: 1 000 rows with a nullable sort column `k` (every tenth is NULL).
+    /// - `special`: rows whose text holds `%`, `_`, `\\` and `'`.
+    /// - `sleepy`: a view that sleeps 30 seconds when read.
+    public static func withGridSchema<T>(
+        _ body: (String, PGConnectionParameters) async throws -> T
+    ) async throws -> T {
+        guard let url else { throw PGError("SIFT_PG_URL is not set") }
+        let readOnly = try PGConnectionParameters(url: url)
+        var writable = readOnly
+        writable.readOnly = false
+        writable.applicationName = "Sift grid fixture"
+        let hex = String(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased().prefix(8))
+        let schema = "sift_gr_\(hex)"
+        let admin = try PGConnection(parameters: writable)
+        _ = try admin.query("SET client_min_messages = warning")
+        defer { _ = try? admin.query("DROP SCHEMA IF EXISTS \(schema) CASCADE") }
+        for statement in gridDDL(schema) { _ = try admin.query(statement) }
+        for table in ["big", "nokey", "typed", "sparse", "special"] { _ = try admin.query("ANALYZE \(schema).\(table)") }
+        return try await body(schema, readOnly)
+    }
+
+    static func gridDDL(_ s: String) -> [String] {
+        [
+            "CREATE SCHEMA \(s)",
+            "CREATE TABLE \(s).big (id int PRIMARY KEY, label text NOT NULL, n int NOT NULL)",
+            "INSERT INTO \(s).big SELECT i, 'row-' || i, i % 7 FROM generate_series(1, 20000) i",
+            "CREATE TABLE \(s).nokey (a int, b text)",
+            "INSERT INTO \(s).nokey SELECT i % 50, 'b' || i FROM generate_series(1, 1300) i",
+            "CREATE TYPE \(s).mood AS ENUM ('sad', 'ok', 'happy')",
+            """
+            CREATE TABLE \(s).typed (
+              id int PRIMARY KEY, doc jsonb, mood \(s).mood, uid uuid, at timestamptz, tags int[], price numeric(24,4))
+            """,
+            """
+            INSERT INTO \(s).typed VALUES
+              (1, '{"a": [1, 2, {"b": null}], "c": "x"}', 'ok', '00000000-0000-0000-0000-00000000000a',
+               '2026-11-21 10:00:00+00', '{1,2,3}', 12345678901234.5678),
+              (2, NULL, 'happy', NULL, NULL, NULL, NULL)
+            """,
+            "CREATE TABLE \(s).sparse (id int PRIMARY KEY, k int)",
+            "INSERT INTO \(s).sparse SELECT i, CASE WHEN i % 10 = 0 THEN NULL ELSE i % 100 END FROM generate_series(1, 1000) i",
+            "CREATE TABLE \(s).special (id int PRIMARY KEY, s text)",
+            """
+            INSERT INTO \(s).special VALUES (1, 'a%b'), (2, 'a_b'), (3, 'axb'), (4, 'it''s'), (5, '50%'), (6, 'x\\y'), (7, '$1')
+            """,
+            "CREATE VIEW \(s).sleepy AS SELECT x FROM generate_series(1, 1) x, pg_sleep(30)",
+        ]
+    }
+
     /// The fixture statements, one per element (libpq cannot run several in one parameterised call).
     public static func ddl(a: String, b: String) -> (before: [String], after: [String]) {
         let before = [

@@ -1,10 +1,17 @@
+import Foundation
 import SiftCore
 
 /// A read-only `DatabaseSource` over one libpq session.
 public final class PGSource: DatabaseSource, @unchecked Sendable {
     let connection: PGConnection
+    private let parameters: PGConnectionParameters?
+    private let gridLock = NSLock()
+    private var grids: [PGRelationPager] = []
 
-    private init(connection: PGConnection) { self.connection = connection }
+    private init(connection: PGConnection, parameters: PGConnectionParameters?) {
+        self.connection = connection
+        self.parameters = parameters
+    }
 
     /// Connects read-only (decision D5): the startup option asks for it, then `SHOW` must answer `on`.
     /// If not (a pooler can drop startup options), `SET` is tried once; if the server still does not
@@ -14,7 +21,7 @@ public final class PGSource: DatabaseSource, @unchecked Sendable {
         p.readOnly = true
         let connection: PGConnection
         do { connection = try PGConnection(parameters: p) } catch let e as PGError { throw Self.map(e) }
-        let source = PGSource(connection: connection)
+        let source = PGSource(connection: connection, parameters: p)
         do {
             if try await source.readOnlySetting() != "on" {
                 _ = try await source.rawQuery("SET default_transaction_read_only = on")
@@ -62,7 +69,23 @@ public final class PGSource: DatabaseSource, @unchecked Sendable {
 
     public var isBroken: Bool { connection.isBroken }
 
-    public func close() { connection.close() }
+    public func close() {
+        let open = gridLock.withLock { () -> [PGRelationPager] in
+            defer { grids = [] }
+            return grids
+        }
+        for grid in open { grid.close() }
+        connection.close()
+    }
+
+    /// A pager on a second connection of its own, opened at its first call, so cancelling a grid's query never
+    /// cancels this source's schema refresh. It closes with the source.
+    public func gridSource(for relation: RelationInfo) -> (any GridSource)? {
+        guard let parameters else { return nil }
+        let pager = PGRelationPager(parameters: parameters, relation: relation)
+        gridLock.withLock { grids.append(pager) }
+        return pager
+    }
 
     static func map(_ e: PGError) -> SourceError {
         if e.isConnectionLost { return SourceError(.connectionLost, e.message) }
