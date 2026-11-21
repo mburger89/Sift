@@ -48,6 +48,9 @@ public final class DatabaseSession {
     /// Bumped whenever a reconnect loop starts or ends, so a stale loop never installs its source.
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private var attempts = 0
+    /// The grids opened on this session's source, by relation: a grid keeps its sort, filters and pages while the
+    /// user looks at another tab. A new source (a reconnect) or a changed relation drops them.
+    @ObservationIgnored private var grids: [RelationID: (model: GridModel, relation: RelationInfo)] = [:]
 
     public init(
         key: ConnectionKey, title: String, connector: any DatabaseConnecting, clock: any SiftClock,
@@ -102,6 +105,7 @@ public final class DatabaseSession {
     }
 
     private func install(_ opened: any DatabaseSource, _ loaded: SchemaSnapshot) {
+        dropGrids()
         source?.close()
         source = opened
         snapshot = loaded
@@ -109,6 +113,29 @@ public final class DatabaseSession {
     }
 
     // MARK: Reading
+
+    // MARK: Grids
+
+    /// The grid source for a relation: a connection of its own, so cancelling a grid's query never cancels the
+    /// schema refresh. Nil when the session is not ready, the relation is unknown, or the source cannot page.
+    public func gridSource(for id: RelationID) -> (any GridSource)? {
+        guard let source, state == .ready, let relation = snapshot?.relation(id) else { return nil }
+        return source.gridSource(for: relation)
+    }
+
+    /// The paged model of a relation, made at the first ask and kept.
+    public func grid(for id: RelationID) -> GridModel? {
+        if let existing = grids[id] { return existing.model }
+        guard let relation = snapshot?.relation(id), let gridSource = gridSource(for: id) else { return nil }
+        let model = GridModel(source: gridSource, clock: clock)
+        grids[id] = (model, relation)
+        return model
+    }
+
+    private func dropGrids() {
+        for (_, grid) in grids { grid.model.close() }
+        grids = [:]
+    }
 
     /// Loads the first rows of a relation. A relation already loaded is left alone unless `force`.
     public func loadRows(_ id: RelationID, force: Bool = false) async {
@@ -130,6 +157,11 @@ public final class DatabaseSession {
         } catch {
             _ = noticeLoss(error, of: source)
             return
+        }
+        // A relation whose structure changed starts its grid again; the others keep theirs.
+        for (id, grid) in grids where snapshot?.relation(id) != grid.relation {
+            grid.model.close()
+            grids[id] = nil
         }
         for id in rows.keys.sorted() { await loadRows(id, force: true) }
     }
@@ -157,6 +189,7 @@ public final class DatabaseSession {
     private func noticeLoss(_ error: any Error, of failed: any DatabaseSource) -> Bool {
         let lost = (error as? SourceError)?.kind == .connectionLost || failed.isBroken
         guard lost, source === failed, state == .ready else { return lost }
+        dropGrids()
         failed.close()
         source = nil
         state = .lost(Self.describe(error))
@@ -243,6 +276,7 @@ public final class DatabaseSession {
         generation += 1
         reconnectTask?.cancel()
         reconnectTask = nil
+        dropGrids()
         source?.close()
         source = nil
         state = .stopped
