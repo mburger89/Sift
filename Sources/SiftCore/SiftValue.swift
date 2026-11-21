@@ -15,11 +15,14 @@ public struct ResultColumn: Sendable, Equatable {
     public var name: String
     public var typeOID: UInt32
     public var typeName: String
+    /// True for a user-defined enum type: its values arrive as text and draw as a label.
+    public var isEnum: Bool
 
-    public init(name: String, typeOID: UInt32, typeName: String) {
+    public init(name: String, typeOID: UInt32, typeName: String, isEnum: Bool = false) {
         self.name = name
         self.typeOID = typeOID
         self.typeName = typeName
+        self.isEnum = isEnum
     }
 }
 
