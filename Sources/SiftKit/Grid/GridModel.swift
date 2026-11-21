@@ -35,9 +35,18 @@ public final class GridModel {
     public private(set) var isCountingExactly = false
     /// Bumped once for each page that lands, and for each change of query: what the visible cells depend on.
     public private(set) var pagesVersion = 0
-    /// The cell cursor, and the selected row.
+    /// The cell cursor, and the selected row. A position's column is -1 for the frozen row-number column.
     public var activePosition: GridPosition?
     public var selectedRow: Int?
+    /// Filters the server refused with the last `apply`; the toolbar shows them on a red chip with `error`.
+    public private(set) var rejectedFilters: [GridFilter] = []
+    /// The toolbar's form: the filter being written, and the search text (applied on Return, never per keystroke).
+    public var draftColumn = 0
+    public var draftOp = FilterOp.contains
+    public var draftValue = ""
+    public var searchText = ""
+    /// Which JSON containers the inspector has open, by path.
+    public var inspectorOpen: Set<String> = []
 
     public let source: any GridSource
     public var columns: [ResultColumn] { source.columns }
@@ -80,6 +89,9 @@ public final class GridModel {
     @ObservationIgnored private var turnScheduled = false
     @ObservationIgnored private var epoch = 0
     @ObservationIgnored private var tick = 0
+    /// Called when a query fails because the connection is gone: the session starts reconnecting. A grid has a
+    /// connection of its own, so the session may not have noticed.
+    @ObservationIgnored public var onConnectionLost: (@MainActor (any Error) -> Void)?
     /// How many times `value(row:column:)` has been asked. For cost tests.
     @ObservationIgnored public private(set) var valueReads = 0
 
@@ -98,7 +110,9 @@ public final class GridModel {
     /// The value at `(row, column)`, or nil when its page is not loaded (draw a placeholder). A missing page is
     /// requested once, on the next main-actor turn.
     public func value(row: Int, column: Int) -> SiftValue? {
-        _ = pagesVersion
+        // Not a read of `pagesVersion`: this runs while a table lays out, outside any component's body, and an observed
+        // read there would make a page landing rebuild whatever is being tracked. The component that shows cells reads
+        // `pagesVersion` itself, in its body.
         valueReads += 1
         let size = GridPaging.pageSize
         let page = row / size
@@ -142,9 +156,51 @@ public final class GridModel {
         }
         selectedRow = nil
         activePosition = nil
+        rejectedFilters = []
         pagesVersion += 1
         isLoading = true
         scheduleTurn()
+    }
+
+    // MARK: The toolbar's actions
+
+    /// Adds the filter in the form as a chip and applies it. A filter that needs a value and has none is ignored.
+    public func addDraftFilter() {
+        guard columns.indices.contains(draftColumn) else { return }
+        if draftOp.takesValue, draftValue.isEmpty { return }
+        var next = query
+        next.filters.append(GridFilter(column: draftColumn, op: draftOp, value: draftOp.takesValue ? draftValue : nil))
+        draftValue = ""
+        apply(next)
+    }
+
+    public func removeFilter(at index: Int) {
+        guard query.filters.indices.contains(index) else { return }
+        var next = query
+        next.filters.remove(at: index)
+        apply(next)
+    }
+
+    /// Drops the red chip of a refused filter, and its message.
+    public func dismissRejectedFilters() {
+        rejectedFilters = []
+        if errorIsFilter {
+            error = nil
+            errorIsFilter = false
+        }
+    }
+
+    /// Applies the search text: the Return key. An empty text clears the search.
+    public func submitSearch() {
+        var next = query
+        next.search = searchText.isEmpty ? nil : searchText
+        apply(next)
+    }
+
+    /// The text of a chip: `name = value`.
+    public func chipTitle(_ filter: GridFilter) -> String {
+        let name = columns.indices.contains(filter.column) ? columns[filter.column].name : "?"
+        return filter.op.takesValue ? "\(name) \(filter.op.title) \(filter.value ?? "")" : "\(name) \(filter.op.title)"
     }
 
     /// Asks again for what failed.
@@ -323,6 +379,8 @@ public final class GridModel {
             // The server refused the new filters: show the last good rows again, with the reason.
             previous = nil
             generation += 1
+            rejectedFilters = query.filters.filter { !good.query.filters.contains($0) }
+            let narrowedDifferently = !rejectedFilters.isEmpty || query.search != good.query.search
             query = good.query
             pages = good.pages
             count = good.count
@@ -333,12 +391,13 @@ public final class GridModel {
             exactNeeded = false
             isCountingExactly = false
             self.error = message
-            errorIsFilter = true
+            errorIsFilter = narrowedDifferently
             pagesVersion += 1
             return pump()
         }
         self.error = message
         errorIsFilter = false
+        if let lost = error as? SourceError, lost.kind == .connectionLost { onConnectionLost?(error) }
         switch work {
         case .page(let page): failedPages.insert(page)
         case .count: countNeeded = false

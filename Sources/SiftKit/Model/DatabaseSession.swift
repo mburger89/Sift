@@ -128,6 +128,9 @@ public final class DatabaseSession {
         if let existing = grids[id] { return existing.model }
         guard let relation = snapshot?.relation(id), let gridSource = gridSource(for: id) else { return nil }
         let model = GridModel(source: gridSource, clock: clock)
+        if let current = source {
+            model.onConnectionLost = { [weak self] error in _ = self?.noticeLoss(error, of: current) }
+        }
         grids[id] = (model, relation)
         return model
     }

@@ -1,7 +1,8 @@
 import MetalUI
 import SiftCore
 
-/// A table or view: the header with its row count, then the columns, keys and indexes, then the first rows.
+/// A table or view: the header with its row count, then two tabs: the rows in the grid, or the structure (columns,
+/// keys and indexes).
 /// There is no editing UI: nothing here writes to the database.
 struct RelationDetailView: Component {
     let model: AppModel
@@ -13,22 +14,30 @@ struct RelationDetailView: Component {
             VStack(alignment: .leading, spacing: 0) {
                 ConnectionBanner(model: model, key: key)
                 RelationHeader(session: session, relation: relation)
-                ScrollView {
-                    VStack(alignment: .leading, spacing: Pixels(16)) {
-                        ColumnsSection(relation: relation)
-                        KeysSection(model: model, key: key, snapshot: session.snapshot, relation: relation)
-                        IndexesSection(relation: relation)
-                    }
-                    .padding(Edges(all: Pixels(16)))
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                Picker("Tab", selection: Binding(get: { model.relationTab }, set: { model.relationTab = $0 })) {
+                    Text("Rows").tag(RelationTab.rows)
+                    Text("Structure").tag(RelationTab.structure)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                Divider()
-                PreviewSection(session: session, relation: relation)
+                .pickerStyle(.segmented)
+                .frame(width: Pixels(220))
+                .padding(inset(16, 4))
+                .accessibilityIdentifier("detail.tabs")
+                if model.relationTab == .structure {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: Pixels(16)) {
+                            ColumnsSection(relation: relation)
+                            KeysSection(model: model, key: key, snapshot: session.snapshot, relation: relation)
+                            IndexesSection(relation: relation)
+                        }
+                        .padding(Edges(all: Pixels(16)))
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    GridView(session: session, relation: relation)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             }
-            // Reads the first rows when a table is chosen (and again when the session is back after a loss).
-            .task(id: LoadKey(id: id, ready: session.state == .ready)) { await session.loadRows(id) }
         } else {
             VStack(alignment: .leading, spacing: Pixels(8)) {
                 ConnectionBanner(model: model, key: key)
@@ -38,11 +47,6 @@ struct RelationDetailView: Component {
             }
             .padding(Edges(all: Pixels(16)))
         }
-    }
-
-    struct LoadKey: Equatable {
-        var id: RelationID
-        var ready: Bool
     }
 }
 

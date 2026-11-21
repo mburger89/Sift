@@ -8,6 +8,11 @@ public enum DetailMode: Sendable, Equatable {
     case table, map
 }
 
+/// The tabs of a table's detail: its rows in the grid, or its structure (columns, keys, indexes).
+public enum RelationTab: Sendable, Equatable {
+    case rows, structure
+}
+
 /// The app's state, one `@Observable` class created in `main.swift` and handed to the views.
 @MainActor
 @Observable
@@ -30,6 +35,8 @@ public final class AppModel {
         }
     }
     public var detailMode: DetailMode = .table
+    /// Which tab a table's detail shows.
+    public var relationTab: RelationTab = .rows
     /// Why saved connections could not be read or written, if they could not.
     public private(set) var storageProblem: String?
     /// The form's fields while the inline connection form is open.
