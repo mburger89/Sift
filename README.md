@@ -6,7 +6,11 @@ It is for checking that what your code meant to write actually landed in a Postg
 
 Design: [docs/superpowers/specs/2026-11-18-sift-design.md](docs/superpowers/specs/2026-11-18-sift-design.md)
 
-## Status: phase 0, libpq from Swift
+## Status: phase 2b, the schema map
+
+Selecting a connected database opens its schema map: a deterministic layered layout with pan, zoom, a minimap, fly-to search (Cmd/Ctrl-F), neighbour spotlight on hover, double-click to open a table, level of detail and culling, and dragged positions remembered per database. The Table or Map picker switches the detail area.
+
+### Phase 0: libpq from Swift
 
 `SiftPG` wraps libpq. `siftpg-probe` round-trips one row of every supported type against a real server, and CI runs it on macOS, Linux and Windows.
 
