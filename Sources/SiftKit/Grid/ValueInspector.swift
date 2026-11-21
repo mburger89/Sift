@@ -32,7 +32,7 @@ struct ValueInspector: Component, Equatable {
 /// The most the inspector draws of one value: past it a value is cut with a note.
 enum InspectorLimits {
     static let text = 20_000
-    static let jsonLines = 400
+    static let jsonChildren = 200
 }
 
 struct InspectorBody: Component {
@@ -80,7 +80,11 @@ struct InspectorValue: Component {
         case .some(let value):
             let raw = CellFormat.rawText(value)
             if (column.typeName == "jsonb" || column.typeName == "json"), let tree = JSONNode.parse(raw) {
-                JSONLines(grid: grid, lines: JSONLine.flatten(tree, open: grid.inspectorOpen))
+                VStack(alignment: .leading, spacing: Pixels(2)) {
+                    JSONNodeView(node: tree, key: nil, path: "")
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("inspector.json")
             } else {
                 let shown = raw.count > InspectorLimits.text
                     ? String(raw.prefix(InspectorLimits.text)) + "\n\u{2026} \(raw.count - InspectorLimits.text) more characters"
@@ -97,68 +101,87 @@ struct InspectorValue: Component {
     }
 }
 
-/// One visible line of a JSON tree.
-struct JSONLine: Equatable {
-    var path: String
-    var depth: Int
-    var key: String?
-    var summary: String
-    var isContainer: Bool
-    var isOpen: Bool
+/// A JSON value as a tree: objects and arrays are `DisclosureGroup`s that open and close, scalars are one line. The root is
+/// always open. A container shows at most `InspectorLimits.jsonChildren` children, then says how many it left out.
+struct JSONNodeView: Component {
+    let node: JSONNode
+    let key: String?
+    let path: String
 
-    /// The lines a tree shows when only the containers in `open` are open (the root always is).
-    static func flatten(_ root: JSONNode, open: Set<String>) -> [JSONLine] {
-        var lines: [JSONLine] = []
-        func walk(_ node: JSONNode, key: String?, path: String, depth: Int) {
-            guard lines.count < InspectorLimits.jsonLines else { return }
-            switch node {
-            case .object(let members):
-                let isOpen = path.isEmpty || open.contains(path)
-                lines.append(JSONLine(path: path, depth: depth, key: key, summary: node.summary, isContainer: true, isOpen: isOpen))
-                if isOpen { for member in members { walk(member.value, key: member.key, path: path + "/" + member.key, depth: depth + 1) } }
-            case .array(let items):
-                let isOpen = path.isEmpty || open.contains(path)
-                lines.append(JSONLine(path: path, depth: depth, key: key, summary: node.summary, isContainer: true, isOpen: isOpen))
-                if isOpen { for (i, item) in items.enumerated() { walk(item, key: "\(i)", path: path + "/\(i)", depth: depth + 1) } }
-            default:
-                lines.append(JSONLine(path: path, depth: depth, key: key, summary: node.text, isContainer: false, isOpen: false))
+    var content: some ElementGroup {
+        switch node {
+        case .object(let members):
+            let shown = Array(members.prefix(InspectorLimits.jsonChildren))
+            let more = members.count - shown.count
+            if path.isEmpty {
+                VStack(alignment: .leading, spacing: Pixels(2)) {
+                    JSONLabel(key: key, summary: node.summary, id: "inspector.json.root")
+                    ForEach(Array(shown.enumerated()), id: \.offset) { _, member in
+                        JSONNodeView(node: member.value, key: member.key, path: path + "/" + member.key)
+                    }
+                    if more > 0 { JSONMore(count: more) }
+                }
+                .padding(Edges(top: Pixels(0), right: Pixels(0), bottom: Pixels(0), left: Pixels(0)))
+            } else {
+                DisclosureGroup {
+                    ForEach(Array(shown.enumerated()), id: \.offset) { _, member in
+                        JSONNodeView(node: member.value, key: member.key, path: path + "/" + member.key)
+                    }
+                    if more > 0 { JSONMore(count: more) }
+                } label: {
+                    JSONLabel(key: key, summary: node.summary, id: "inspector.json.node.\(path)")
+                }
             }
+        case .array(let items):
+            let shown = Array(items.prefix(InspectorLimits.jsonChildren))
+            let more = items.count - shown.count
+            if path.isEmpty {
+                VStack(alignment: .leading, spacing: Pixels(2)) {
+                    JSONLabel(key: key, summary: node.summary, id: "inspector.json.root")
+                    ForEach(Array(shown.enumerated()), id: \.offset) { index, item in
+                        JSONNodeView(node: item, key: "\(index)", path: path + "/\(index)")
+                    }
+                    if more > 0 { JSONMore(count: more) }
+                }
+            } else {
+                DisclosureGroup {
+                    ForEach(Array(shown.enumerated()), id: \.offset) { index, item in
+                        JSONNodeView(node: item, key: "\(index)", path: path + "/\(index)")
+                    }
+                    if more > 0 { JSONMore(count: more) }
+                } label: {
+                    JSONLabel(key: key, summary: node.summary, id: "inspector.json.node.\(path)")
+                }
+            }
+        default:
+            JSONLabel(key: key, summary: node.text, id: path.isEmpty ? "inspector.json.root" : "inspector.json.node.\(path)")
         }
-        walk(root, key: nil, path: "", depth: 0)
-        return lines
     }
 }
 
-struct JSONLines: Component {
-    let grid: GridModel
-    let lines: [JSONLine]
+/// `key: summary`, one line.
+struct JSONLabel: Component {
+    let key: String?
+    let summary: String
+    let id: String
 
     var content: some ElementGroup {
-        let grid = grid
-        VStack(alignment: .leading, spacing: Pixels(2)) {
-            ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
-                HStack(spacing: Pixels(4)) {
-                    if line.isContainer, !line.path.isEmpty {
-                        Button(line.isOpen ? "\u{25BE}" : "\u{25B8}") {
-                            if grid.inspectorOpen.contains(line.path) { grid.inspectorOpen.remove(line.path) } else { grid.inspectorOpen.insert(line.path) }
-                        }
-                        .accessibilityLabel(line.isOpen ? "Collapse" : "Expand")
-                        .accessibilityIdentifier("inspector.json.toggle.\(index)")
-                    } else {
-                        Text(verbatim: " ").font(size: 12)
-                    }
-                    if let key = line.key {
-                        Text(verbatim: key + ":").font(size: 12).foregroundColor(.secondary)
-                    }
-                    Text(verbatim: line.summary).font(size: 12).monospaced()
-                        .accessibilityLabel(line.summary)
-                        .accessibilityIdentifier("inspector.json.line.\(index)")
-                }
-                .padding(Edges(top: Pixels(0), right: Pixels(0), bottom: Pixels(0), left: Pixels(Float(line.depth) * 14)))
+        HStack(spacing: Pixels(4)) {
+            if let key {
+                Text(verbatim: key + ":").font(size: 12).foregroundColor(.secondary)
             }
+            Text(verbatim: summary).font(size: 12).monospaced()
+                .accessibilityLabel(summary)
+                .accessibilityIdentifier(id)
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("inspector.json")
+    }
+}
+
+struct JSONMore: Component {
+    let count: Int
+
+    var content: some ElementGroup {
+        Text(verbatim: "\u{2026} \(count) more").font(size: 12).foregroundColor(.secondary)
     }
 }
 

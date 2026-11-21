@@ -180,15 +180,19 @@ extension GridViewTests {
         try window.click(cell(window, 0, 3))
         try await window.runUntilIdle()
         #expect(try window.element(identifier: "inspector.type").value == "jsonb")
-        #expect(try window.element(identifier: "inspector.json.line.0").value == "{3}")
-        #expect(try window.element(identifier: "inspector.json.line.1").value == "[2]")
-        #expect(try window.element(identifier: "inspector.json.line.2").value == "{1}")
-        #expect(try window.element(identifier: "inspector.json.line.3").value == "\"x\"")
-        try window.click(window.element(identifier: "inspector.json.toggle.1"))
+        #expect(try window.element(identifier: "inspector.json.root").value == "{3}")
+        // A container is a disclosure button labelled `key:, summary`; a scalar is a line.
+        _ = try window.element(label: "a:, [2]")
+        _ = try window.element(label: "b:, {1}")
+        #expect(try window.element(identifier: "inspector.json.node./d").value == "\"x\"")
+        // Closed until clicked: the array's items are not there.
+        #expect(!window.hasElement(identifier: "inspector.json.node./a/0"))
+        try window.click(window.element(label: "a:, [2]"))
         try await window.runUntilIdle()
-        #expect(try window.element(identifier: "inspector.json.line.2").value == "1")
-        #expect(try window.element(identifier: "inspector.json.line.3").value == "2")
-        #expect(try window.element(identifier: "inspector.json.line.4").value == "{1}")
+        #expect(try window.element(identifier: "inspector.json.node./a/0").value == "1")
+        #expect(try window.element(identifier: "inspector.json.node./a/1").value == "2")
+        // The object beside it is still closed.
+        #expect(!window.hasElement(identifier: "inspector.json.node./b/c"))
     }
 
     @Test func primaryCCopiesTheActiveCellsRawText() async throws {

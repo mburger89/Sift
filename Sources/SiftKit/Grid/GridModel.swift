@@ -45,8 +45,6 @@ public final class GridModel {
     public var draftOp = FilterOp.contains
     public var draftValue = ""
     public var searchText = ""
-    /// Which JSON containers the inspector has open, by path.
-    public var inspectorOpen: Set<String> = []
 
     public let source: any GridSource
     public var columns: [ResultColumn] { source.columns }
