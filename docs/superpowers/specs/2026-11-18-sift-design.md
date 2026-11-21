@@ -98,7 +98,7 @@ Each phase is planned (Opus), built by Sonnet agents and merged when green.
 1. **MetalUI `Table`.** A spec and Opus plan inside MetalUI, then the build. Rows and columns are windowed, with a sticky header, resizing, sort and selection, accessibility roles, and steady-frame cost tests.
 2. **Sift skeleton.** The repo, the targets, the connections sidebar, Docker/OrbStack discovery and the schema browser. It can run with the stock `List` before the `Table` lands.
 2b. **Schema map.** It needs only the schema metadata from phase 2: the layered layout, the card canvas with pan, zoom and minimap, neighbour highlighting, and opening a table from it. It can run in parallel with phase 1.
-3. **Grid browsing.** `Table` over a paged result source, with type rendering, sort, filter and search.
+3. **Grid browsing.** `Table` over a paged result source, with type rendering, sort, filter and search. **Built** (PR "Phase 3: grid browsing"; plan `docs/superpowers/plans/2026-11-21-sift-phase3-grid.md`).
 4. **SQL editor.** The tokenizer, run and cancel, history, and results.
 5. **Checking what landed.** Newest-first, "changed since I last looked", and following foreign keys forward and back.
 6. **SQLite and CSV sources, and CSV export.**
@@ -107,3 +107,13 @@ Each phase is planned (Opus), built by Sonnet agents and merged when green.
 ## Left to the builder
 
 Visual design within MetalUI's defaults, the internal APIs, paging sizes and the exact interaction details. When a choice is between a SwiftUI-shaped and a custom approach, it follows MetalUI's rule: SwiftUI is the design authority.
+
+## 11. MetalUI gaps (phase 3)
+
+Phase 3 is the first consumer of `Table`, cell mode (`tableActiveCell`) and `copyable`. Each gap is filed as MetalUI work, under MetalUI's rules, and is never hacked around in Sift. Numbering continues the phase-2 plan's table (G1 to G12; G1 `SecureField`, G6 `Table` and G12 `textSelection` are answered by MetalUI at `dc52cd37`).
+
+| # | Gap | Where it is hit | Blocking? | What Sift does meanwhile |
+|---|---|---|---|---|
+| G13 | **No tertiary label colour.** `Color` has `.primary` and `.secondary` only (divergence 116). A NULL, an empty-string marker and a loading placeholder want a third, fainter level. | `GridPalette.tertiary` (`GridCell`) | No | `Color.secondary.opacity(0.6)`, in one place. |
+| G14 | **A read of `@Observable` state while a `Table` lays out is tracked by the frame, not by the component that built the table.** A cell closure that reads a model (here the page cache's version) makes a page landing rebuild the whole non-`.equatable()` chain above the table: the toolbar, status bar and inspector rebuilt, 0 sidebar rows. Repro: a `Table` in a plain `Component` beside a second `Component`; a cell closure reads `model.version`; write it, and count both bodies. | `GridModel.value(row:column:)` | No | The cells do not read observed state. The one component that shows cells reads `pagesVersion` in its body, and every part of the grid is its own `.equatable()` component, so a page rebuilds the table and the status bar's loading text only (`GridCostTests`). |
+| G15 | **`Table` has no recursive or tree cell, and a `Component` cannot return itself.** The value inspector's JSON tree wants `DisclosureGroup` nested to any depth. A component's opaque `some ElementGroup` cannot contain itself, and there is no type-erased element to break the cycle. | `ValueInspector` | No | The tree is flattened to at most 400 lines, each indented by its depth, with a toggle per container (open paths live in `GridModel.inspectorOpen`). |
