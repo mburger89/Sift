@@ -94,9 +94,13 @@ struct GridCostTests {
         try await window.runUntilIdle()
         // Not vacuous: the grid is on screen with rows, and the toolbar rebuilds for a keystroke.
         #expect(try view.cell(window, 5, 1).value == "r5c1")
+        // Warm: the first redraw beside a settled table records what later ones replay (on Linux the first one re-requests
+        // every element; on macOS it already replays).
+        window.typeText("a")
+        try await window.runUntilIdle()
         let toolbar = GridToolbar.bodyCount, tableBodies = GridTable.bodyCount
         window.resetFrameWork()
-        window.typeText("abcde")
+        window.typeText("bcde")
         try await window.runUntilIdle()
         #expect(model.searchText == "abcde")
         #expect(GridToolbar.bodyCount > toolbar, "the sibling did not redraw")

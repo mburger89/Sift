@@ -50,7 +50,8 @@ struct GridStatusBar: Component, Equatable {
             }
         }
         .padding(inset(12, 6))
-        .frame(maxWidth: .infinity, minHeight: Pixels(28))
+        // Fixed, as the toolbar's is: a message or a button appearing must not resize the table above.
+        .frame(maxWidth: .infinity, minHeight: Pixels(28), maxHeight: Pixels(28))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("grid.status")
     }

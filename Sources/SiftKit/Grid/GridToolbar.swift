@@ -74,7 +74,8 @@ struct GridToolbar: Component, Equatable {
                 .accessibilityIdentifier("grid.find")
         }
         .padding(inset(12, 6))
-        .frame(maxWidth: .infinity, minHeight: Pixels(40))
+        // A fixed height: the table under it must not change size when a field's text (the font's line height) changes.
+        .frame(maxWidth: .infinity, minHeight: Pixels(40), maxHeight: Pixels(40))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("grid.toolbar")
     }
