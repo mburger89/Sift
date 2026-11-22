@@ -98,7 +98,7 @@ Each phase is planned (Opus), built by Sonnet agents and merged when green.
 1. **MetalUI `Table`.** A spec and Opus plan inside MetalUI, then the build. Rows and columns are windowed, with a sticky header, resizing, sort and selection, accessibility roles, and steady-frame cost tests.
 2. **Sift skeleton.** The repo, the targets, the connections sidebar, Docker/OrbStack discovery and the schema browser. It can run with the stock `List` before the `Table` lands.
 2b. **Schema map.** It needs only the schema metadata from phase 2: the layered layout, the card canvas with pan, zoom and minimap, neighbour highlighting, and opening a table from it. It can run in parallel with phase 1.
-3. **Grid browsing.** `Table` over a paged result source, with type rendering, sort, filter and search.
+3. **Grid browsing.** `Table` over a paged result source, with type rendering, sort, filter and search. **Built** (PR "Phase 3: grid browsing"; plan `docs/superpowers/plans/2026-11-21-sift-phase3-grid.md`).
 4. **SQL editor.** The tokenizer, run and cancel, history, and results.
 5. **Checking what landed.** Newest-first, "changed since I last looked", and following foreign keys forward and back.
 6. **SQLite and CSV sources, and CSV export.**
@@ -107,3 +107,12 @@ Each phase is planned (Opus), built by Sonnet agents and merged when green.
 ## Left to the builder
 
 Visual design within MetalUI's defaults, the internal APIs, paging sizes and the exact interaction details. When a choice is between a SwiftUI-shaped and a custom approach, it follows MetalUI's rule: SwiftUI is the design authority.
+
+## 11. MetalUI gaps (phase 3)
+
+Phase 3 is the first consumer of `Table`, cell mode (`tableActiveCell`) and `copyable`. Each gap is filed as MetalUI work, under MetalUI's rules, and is never hacked around in Sift. Numbering continues the phase-2 plan's table (G1 to G12; G1 `SecureField`, G6 `Table` and G12 `textSelection` are answered by MetalUI at `dc52cd37`).
+
+| # | Gap | Where it is hit | Blocking? | What Sift does meanwhile |
+|---|---|---|---|---|
+| G13 | **No tertiary label colour.** `Color` has `.primary` and `.secondary` only (divergence 116). A NULL, an empty-string marker and a loading placeholder want a third, fainter level. | `GridPalette.tertiary` (`GridCell`) | No | `Color.secondary.opacity(0.6)`, in one place. |
+| G14 | **A write to an `@Observable` that only a memoized (`.equatable()`) component reads still rebuilds the plain components above it, once.** A page landing (`GridModel.pagesVersion`, read in `GridTable`'s body, which is `.equatable()`) rebuilds `RelationDetailView` and `GridView` once each, though neither reads the model. Measured with a `bodyCount` on each (a counting `RelationDetailView` showed +1 per page landing, with or without a read of the model inside the table's cell closures). The memoized children (toolbar, inspector, sidebar rows) are skipped, so the cost is the two thin parents. Repro: `GridCostTests/aPageArrivingRebuildsOnlyTheTable` with a `bodyCount` added to `RelationDetailView`. | `GridCostTests` | No | Every part of the grid is its own `.equatable()` component (equal while its `GridModel` is the same object), so a page rebuilds the table, and the status bar's loading text, and nothing else of weight. |

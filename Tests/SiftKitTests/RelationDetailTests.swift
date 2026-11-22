@@ -12,15 +12,21 @@ struct RelationDetailTests {
     let orders = RelationID("shop", "orders")
     let customers = RelationID("shop", "customers")
 
-    /// A connected rig, a window, and `relation` selected, settled.
-    func open(_ relation: RelationID, rig: Rig? = nil, recordsLayout: Bool = true) async throws -> (Rig, TestWindow) {
+    /// A connected rig, a window, and `relation` selected on `tab`, settled. On the rows tab the grid's count is in.
+    func open(_ relation: RelationID, rig: Rig? = nil, recordsLayout: Bool = true,
+              tab: RelationTab = .structure) async throws -> (Rig, TestWindow) {
         let rig = rig ?? Rig()
         await rig.model.refreshDiscovery()
         await rig.model.open(key)
+        rig.model.relationTab = tab
         let window = try siftWindow(model: rig.model, recordsLayout: recordsLayout)
         rig.model.select(relation, in: key)
-        try await window.runUntil { rig.model.sessions[key]?.rows[relation]?.value != nil }
         try await window.runUntilIdle()
+        if tab == .rows {
+            let grid = try #require(rig.model.sessions[key]?.grid(for: relation))
+            try await window.runUntil { grid.count != .estimated(0) && !grid.isLoading }
+            try await window.runUntilIdle()
+        }
         return (rig, window)
     }
 
@@ -49,14 +55,14 @@ struct RelationDetailTests {
     }
 
     @Test func nullIsDistinctFromEmpty() async throws {
-        let (_, window) = try await open(orders)
-        let null = try window.element(identifier: "cell.0.2")
-        let empty = try window.element(identifier: "cell.1.2")
+        let (_, window) = try await open(orders, tab: .rows)
+        let null = try window.element(identifier: "grid.cell.0.2")
+        let empty = try window.element(identifier: "grid.cell.1.2")
         #expect(null.value == "null")
         #expect(empty.value == "empty")
         // Not vacuous: ordinary cells are there and read as their values.
-        #expect(try window.element(identifier: "cell.0.1").value == "10")
-        #expect(try window.element(identifier: "cell.2.2").value == "done")
+        #expect(try window.element(identifier: "grid.cell.0.1").value == "10")
+        #expect(try window.element(identifier: "grid.cell.2.2").value == "done")
     }
 
     @Test func exactCountReplacesTheEstimate() async throws {
@@ -83,16 +89,18 @@ struct RelationDetailTests {
     }
 
     @Test func noEditingUIExists() async throws {
-        let (_, window) = try await open(orders)
-        // Not vacuous: the preview's cells are drawn.
+        let (_, window) = try await open(orders, tab: .rows)
+        // Not vacuous: the grid's cells are drawn.
         #expect(window.shows("done"))
-        #expect(try window.elements(role: .textField).isEmpty)
+        // The only text fields are the filter value and the search: nothing edits a cell.
+        let fields = try window.elements(role: .textField).compactMap(\.identifier)
+        #expect(Set(fields) == ["grid.filter.value", "grid.search"], "\(fields)")
         for word in ["Edit", "Delete row", "Insert", "Delete", "Save"] {
             #expect(!window.shows(word), "\(word) must not exist in a table's detail")
         }
     }
 
-    @Test func wideTablesShowTheFirst64Columns() async throws {
+    @Test func aWideRelationRealisesOnlyItsWindowOfColumns() async throws {
         let wide = RelationID("s", "wide")
         let columns = (0..<300).map { ColumnInfo(name: "c\($0)", ordinal: $0 + 1, typeName: "integer") }
         let relation = RelationInfo(id: wide, kind: .table, rowEstimate: .estimated(1), columns: columns)
@@ -101,16 +109,19 @@ struct RelationDetailTests {
             columns: columns.map { ResultColumn(name: $0.name, typeOID: 23, typeName: "integer") },
             rows: [(0..<300).map { SiftValue.int(Int64($0)) }])
         let rig = Rig(sources: [FakeSource(schema: snapshot, rows: [wide: page])])
-        let (_, window) = try await open(wide, rig: rig)
-        #expect(try window.element(identifier: "preview.columnsNote").value == "showing 64 of 300 columns")
+        let (_, window) = try await open(wide, rig: rig, tab: .rows)
+        try await window.runUntil { rig.model.sessions[key]?.grid(for: wide)?.cachedPages == [0] }
+        try await window.runUntilIdle()
+        // Every column is in the grid, and only the ones in view are built.
+        #expect(rig.model.sessions[key]?.grid(for: wide)?.columns.count == 300)
         #expect(window.shows("c0"))
-        let headers = try window.elements { ($0.identifier ?? "").hasPrefix("preview.header.") }
-        #expect(headers.count == 64, "64 header cells: \(headers.count)")
-        #expect(headers.last?.value == "c63")
-        #expect(!headers.contains { $0.value == "c64" })
+        #expect(try window.element(identifier: "grid.cell.0.0").value == "0")
+        #expect(!window.hasElement(identifier: "grid.cell.0.299"))
+        let cells = try window.elements { ($0.identifier ?? "").hasPrefix("grid.cell.0.") }
+        #expect(cells.count > 3 && cells.count < 30, "cells in the first row: \(cells.count)")
     }
 
-    @Test func previewRealizesOnlyVisibleRows() async throws {
+    @Test func aBigRelationRealisesOnlyItsWindowOfRows() async throws {
         let big = RelationID("s", "big")
         let columns = [ColumnInfo(name: "id", ordinal: 1, typeName: "bigint"), ColumnInfo(name: "label", ordinal: 2, typeName: "text")]
         let relation = RelationInfo(id: big, kind: .table, rowEstimate: .estimated(100), columns: columns)
@@ -119,10 +130,12 @@ struct RelationDetailTests {
             columns: [ResultColumn(name: "id", typeOID: 20, typeName: "bigint"), ResultColumn(name: "label", typeOID: 25, typeName: "text")],
             rows: (0..<100).map { [.int(Int64($0)), .text("row \($0)")] })
         let rig = Rig(sources: [FakeSource(schema: snapshot, rows: [big: page])])
-        let (_, window) = try await open(big, rig: rig, recordsLayout: false)
+        let (_, window) = try await open(big, rig: rig, recordsLayout: false, tab: .rows)
+        try await window.runUntil { rig.model.sessions[key]?.grid(for: big)?.cachedPages == [0] }
+        try await window.runUntilIdle()
         window.window.setNeedsRedraw()
         window.tick()
-        let realized = window.lastFrameWork.lazyUnitsRealized
+        let realized = window.lastFrameWork.tableRowsRealized
         #expect(realized > 5, "rows are built: \(realized)")
         #expect(realized <= 34, "only a window of the 100: \(realized)")
         #expect(window.shows("row 0"))

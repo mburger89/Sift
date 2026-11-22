@@ -26,7 +26,8 @@ struct ReconnectUITests {
         await rig.model.open(key)
         let window = try siftWindow(model: rig.model)
         rig.model.select(orders, in: key)
-        try await window.runUntil { rig.model.sessions[key]?.rows[orders]?.value != nil }
+        try await window.runUntil { rig.model.sessions[key]?.grid(for: orders)?.cachedPages.contains(0) == true }
+        try await window.runUntilIdle()
         return window
     }
 

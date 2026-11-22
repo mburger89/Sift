@@ -14,6 +14,8 @@ public final class FakeSource: DatabaseSource, @unchecked Sendable {
     private var _closed = false
     private var _rowRequests: [RelationID] = []
     private var held: CheckedContinuation<Int64, any Error>?
+    private var _grids: [RelationID: FakeGridSource] = [:]
+    private var _gridRequests: [RelationID] = []
 
     public init(schema: SchemaSnapshot, rows: [RelationID: ResultPage] = [:], counts: [RelationID: Int64] = [:]) {
         _schema = schema
@@ -94,5 +96,36 @@ public final class FakeSource: DatabaseSource, @unchecked Sendable {
         continuation?.resume(throwing: SourceError(.cancelled, "The count was cancelled"))
     }
 
-    public func close() { lock.withLock { _closed = true } }
+    public func close() {
+        let open = lock.withLock { () -> [FakeGridSource] in
+            _closed = true
+            return Array(_grids.values)
+        }
+        for grid in open { grid.close() }
+    }
+
+    /// The grid `gridSource(for:)` answers for a relation. Without one, it answers the relation's canned `rows`.
+    public func setGrid(_ grid: FakeGridSource, for relation: RelationID) { lock.withLock { _grids[relation] = grid } }
+    /// The grids `gridSource(for:)` handed out, in order.
+    public var gridRequests: [RelationID] { lock.withLock { _gridRequests } }
+    public func grid(for relation: RelationID) -> FakeGridSource? { lock.withLock { _grids[relation] } }
+
+    public func gridSource(for relation: RelationInfo) -> (any GridSource)? {
+        lock.withLock {
+            _gridRequests.append(relation.id)
+            if let grid = _grids[relation.id] { return grid }
+            let columns: [ResultColumn]
+            let rows: [[SiftValue]]
+            if let page = _rows[relation.id] {
+                columns = page.columns
+                rows = page.rows
+            } else {
+                columns = relation.columns.map { ResultColumn(name: $0.name, typeOID: 0, typeName: $0.typeName, isEnum: $0.isEnum) }
+                rows = []
+            }
+            let grid = FakeGridSource(columns: columns, rows: rows)
+            _grids[relation.id] = grid
+            return grid
+        }
+    }
 }

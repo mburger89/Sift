@@ -25,4 +25,11 @@ public protocol DatabaseSource: AnyObject, Sendable {
     func cancelCurrent()
     var isBroken: Bool { get }
     func close()
+    /// A grid over `relation`, on a connection of its own so cancelling a grid never cancels a schema refresh,
+    /// or nil when the source cannot page rows. The source closes it with itself.
+    func gridSource(for relation: RelationInfo) -> (any GridSource)?
+}
+
+extension DatabaseSource {
+    public func gridSource(for relation: RelationInfo) -> (any GridSource)? { nil }
 }
