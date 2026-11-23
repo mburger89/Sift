@@ -149,6 +149,36 @@ struct QueryEditorTests {
         #expect(rig.editor.summary == .cancelled)
     }
 
+    @Test func aCancelBetweenStatementsStopsTheRest() async throws {
+        let rig = ModelRig(Self.three)
+        rig.runner.holds = true
+        rig.editor.runAll()
+        try await Self.until { rig.runner.isHolding }
+        // Statement 1 finishes, and the cancel lands before the loop sends statement 2.
+        rig.runner.release(rig.rows(1))
+        rig.editor.cancel()
+        try await rig.finish()
+        #expect(rig.runner.sql.count == 1)
+        #expect(rig.editor.summary == .cancelled)
+        #expect(rig.editor.batchLines.last == "2. Cancelled")
+    }
+
+    @Test func closingDuringARunAllStopsItAndWritesNothingMore() async throws {
+        let rig = ModelRig(Self.three)
+        rig.runner.holds = true
+        rig.editor.runAll()
+        try await Self.until { rig.runner.isHolding }
+        let before = rig.store.load(identity: rig.identity)
+        rig.editor.close()
+        rig.runner.release(rig.rows(1))
+        // The task ends on its own; give it its turns.
+        for _ in 0..<200 { await Task.yield() }
+        #expect(rig.runner.sql.count == 1)
+        #expect(rig.store.load(identity: rig.identity) == before)
+        #expect(rig.editor.history.isEmpty)
+        #expect(rig.editor.result == nil)
+    }
+
     @Test func aCancelShowsCancelledNotAnError() async throws {
         let rig = ModelRig("select pg_sleep(30)")
         rig.runner.script(.cancelled)

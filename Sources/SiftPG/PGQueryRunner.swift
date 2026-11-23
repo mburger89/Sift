@@ -61,6 +61,8 @@ public final class PGQueryRunner: QueryRunning, @unchecked Sendable {
             let seconds = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
             return QueryOutcome(kind: kind, duration: seconds)
         }
+        // The flag is cleared here and nowhere else: a `cancel()` that came before this run started it, so it is
+        // dropped; one that comes after is kept, whatever the run is doing.
         lock.withLock {
             running = true
             cancelRequested = false
@@ -75,12 +77,17 @@ public final class PGQueryRunner: QueryRunning, @unchecked Sendable {
         if lock.withLock({ cancelRequested }) { return outcome(.cancelled) }
         do {
             let done = try await connection.readOnlyTransaction(statementTimeout: statementTimeout) { tx in
-                try Self.execute(sql, in: tx)
+                // Last look before the statement goes out: a cancel that landed before it reached the server would
+                // otherwise find nothing to stop. Throwing rolls the transaction back.
+                if self.lock.withLock({ self.cancelRequested }) { throw SourceError(.cancelled, "Cancelled") }
+                return try Self.execute(sql, in: tx)
             }
             switch done {
             case .rows(let columns, let rows, let truncated): return outcome(.rows(columns: columns, rows: rows, truncated: truncated))
             case .command(let tag, let affected): return outcome(.command(tag: tag, affected: affected))
             }
+        } catch let e as SourceError where e.kind == .cancelled {
+            return outcome(.cancelled)
         } catch let e as PGError {
             if e.sqlState == QueryFailure.queryCanceled, lock.withLock({ cancelRequested }) { return outcome(.cancelled) }
             return outcome(.failed(Self.failure(e)))
@@ -165,7 +172,7 @@ public final class PGQueryRunner: QueryRunning, @unchecked Sendable {
     /// nothing running is ignored by the server.
     public func cancel() {
         let connection = lock.withLock { () -> PGConnection? in
-            if running { cancelRequested = true }
+            cancelRequested = true
             return self.connection
         }
         connection?.cancel()

@@ -79,6 +79,10 @@ public final class QueryEditorModel {
     @ObservationIgnored private let now: @MainActor () -> Date
     @ObservationIgnored private var activeRunner: (any QueryRunning)?
     @ObservationIgnored private var runTask: Task<Void, Never>?
+    /// Set by `cancel()` for the run in flight: a Run-all stops before its next statement. Reset at each run's start.
+    @ObservationIgnored private var cancelled = false
+    /// Set by `close()`, for good: a run still in flight ends without history, a result or a further statement.
+    @ObservationIgnored private var closed = false
     /// Whether the editor's caret blinks while it has the focus; tests turn it off so a focused idle editor draws nothing. Never changes while the app runs.
     public var caretBlink: CodeCaretBlink = .on
     @ObservationIgnored private let schema: @MainActor () -> SchemaSnapshot?
@@ -175,15 +179,18 @@ public final class QueryEditorModel {
             return
         }
         activeRunner = runner
+        cancelled = false
         state = .running(startedAt: now())
         let version = buffer.version
         let setting = timeout.setting
         runTask = Task { @MainActor [weak self] in
             var done: [(job: Job, outcome: QueryOutcome)] = []
             for job in jobs {
+                // A cancel that arrived between two statements has nothing to interrupt: skip the rest instead.
+                guard let live = self?.mayStartAnother, live else { break }
                 let outcome = await runner.run(job.sql, statementTimeout: setting)
+                guard let self, !self.closed else { return }
                 done.append((job, outcome))
-                guard let self else { return }
                 self.record(job, outcome)
                 switch outcome.kind {
                 case .failed, .cancelled: break
@@ -191,18 +198,24 @@ public final class QueryEditorModel {
                 }
                 break
             }
-            self?.finish(done, count: jobs.count, version: version)
+            guard let self, !self.closed else { return }
+            self.finish(done, count: jobs.count, version: version)
         }
     }
+
+    private var mayStartAnother: Bool { !closed && !cancelled }
 
     /// Asks the server to stop the statement now running. The run ends as "Cancelled".
     public func cancel() {
         guard isRunning else { return }
+        cancelled = true
         activeRunner?.cancel()
     }
 
     /// Stops what runs and releases the grid: the connection is going away.
     public func close() {
+        closed = true
+        cancelled = true
         activeRunner?.cancel()
         runTask?.cancel()
         result?.close()
@@ -213,7 +226,18 @@ public final class QueryEditorModel {
 
     private func finish(_ done: [(job: Job, outcome: QueryOutcome)], count: Int, version: UInt64) {
         defer { state = .done; runTask = nil; activeRunner = nil }
-        guard let last = done.last else { return }
+        // The user cancelled, and the run ended some other way: a statement finished and the rest were skipped.
+        var skipped = cancelled && !done.isEmpty && done.count < count
+        if let kind = done.last?.outcome.kind {
+            switch kind {
+            case .failed, .cancelled: skipped = false
+            default: break
+            }
+        }
+        guard let last = done.last else {
+            if cancelled { summary = .cancelled }
+            return
+        }
         var lastRows: (columns: [ResultColumn], rows: [[SiftValue]], truncated: Bool, seconds: Double)?
         var affected = 0
         var lines: [String] = []
@@ -232,6 +256,7 @@ public final class QueryEditorModel {
                 lines.append("\(number)\(Self.display(failure).first ?? "Failed")")
             }
         }
+        if skipped { lines.append("\(count > 1 ? "\(done.count + 1). " : "")Cancelled") }
         result?.close()
         result = nil
         if let rows = lastRows {
@@ -243,6 +268,8 @@ public final class QueryEditorModel {
             batchSummary = "\(ran) statement\(ran == 1 ? "" : "s"), \(affected) row\(affected == 1 ? "" : "s") affected"
         }
         switch last.outcome.kind {
+        case _ where skipped:
+            summary = .cancelled
         case .rows(_, let rows, let truncated):
             summary = .rows(count: rows.count, truncated: truncated, seconds: last.outcome.duration)
         case .command(let tag, let n):
