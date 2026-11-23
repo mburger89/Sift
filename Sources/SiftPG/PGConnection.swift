@@ -227,15 +227,39 @@ public final class PGConnection: @unchecked Sendable {
             return RawResult(
                 page: ResultPage(columns: [], rows: []), commandTag: String(cString: PQcmdStatus(result)),
                 affected: Int(String(cString: PQcmdTuples(result))), returnsRows: false)
+        case PGRES_COPY_OUT, PGRES_COPY_IN:
+            // The editor has no COPY stream to show. End it, so the connection is idle again.
+            abandonCopy(conn, status: PQresultStatus(result))
+            throw PGError("COPY is not supported in the editor")
         default:
             // Not classified by SQLSTATE: a dropped socket has none.
             let lost = PQstatus(conn) == CONNECTION_BAD
             if lost { markBroken() }
+            var message = String(cString: PQresultErrorMessage(result)).trimmingTrailingNewlines()
+            if message.isEmpty {
+                message = "Unexpected result: " + String(cString: PQresStatus(PQresultStatus(result)))
+            }
             throw PGError(
-                String(cString: PQresultErrorMessage(result)).trimmingTrailingNewlines(),
+                message,
                 sqlState: field("C"), isConnectionLost: lost,
                 position: field("P").flatMap { Int($0) }, detail: field("D"), hint: field("H"), primaryMessage: field("M"))
         }
+    }
+
+    /// Ends a COPY the server started: drains COPY OUT data, or aborts COPY IN, then consumes the
+    /// remaining results so the connection is idle.
+    private func abandonCopy(_ conn: OpaquePointer, status: ExecStatusType) {
+        if status == PGRES_COPY_OUT {
+            while true {
+                var buffer: UnsafeMutablePointer<CChar>?
+                let n = PQgetCopyData(conn, &buffer, 0)
+                if let buffer { PQfreemem(buffer) }
+                if n < 0 { break }
+            }
+        } else {
+            _ = PQputCopyEnd(conn, "COPY is not supported in the editor")
+        }
+        while let next = PQgetResult(conn) { PQclear(next) }
     }
 
     /// Asks the server to abort the statement now running on this connection (if any).

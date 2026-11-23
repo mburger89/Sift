@@ -180,6 +180,17 @@ import Testing
     }
 
     @Test(.enabled(if: PGFixture.url != nil, gate))
+    func copyIsRefusedWithAMessageAndTheConnectionStaysUsable() async throws {
+        try await Self.withRunner { runner, observer, _, _ in
+            let f = try #require(Self.failure(await runner.run("COPY (SELECT 1) TO STDOUT", statementTimeout: "60s")))
+            #expect(f.message == "COPY is not supported in the editor")
+            // The connection is idle again, not stuck mid-COPY.
+            #expect(try await observer.state(of: runner.backendPID) == "idle")
+            #expect(Self.rows(await runner.run("SELECT 1", statementTimeout: "60s"))?.rows == [[.int(1)]])
+        }
+    }
+
+    @Test(.enabled(if: PGFixture.url != nil, gate))
     func anErrorMidFetchRollsBack() async throws {
         try await Self.withRunner { runner, observer, _, _ in
             let f = try #require(Self.failure(await runner.run(
