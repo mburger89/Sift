@@ -7,6 +7,7 @@ public final class PGSource: DatabaseSource, @unchecked Sendable {
     private let parameters: PGConnectionParameters?
     private let gridLock = NSLock()
     private var grids: [PGRelationPager] = []
+    private var runner: PGQueryRunner?
 
     private init(connection: PGConnection, parameters: PGConnectionParameters?) {
         self.connection = connection
@@ -75,6 +76,7 @@ public final class PGSource: DatabaseSource, @unchecked Sendable {
             return grids
         }
         for grid in open { grid.close() }
+        gridLock.withLock { runner }?.close()
         connection.close()
     }
 
@@ -85,6 +87,17 @@ public final class PGSource: DatabaseSource, @unchecked Sendable {
         let pager = PGRelationPager(parameters: parameters, relation: relation)
         gridLock.withLock { grids.append(pager) }
         return pager
+    }
+
+    /// The SQL editor's runner: a third connection of its own, opened at its first run. One per source; it closes with it.
+    public func queryRunner() -> (any QueryRunning)? {
+        guard let parameters else { return nil }
+        return gridLock.withLock {
+            if let runner { return runner }
+            let made = PGQueryRunner(parameters: parameters)
+            runner = made
+            return made
+        }
     }
 
     static func map(_ e: PGError) -> SourceError {

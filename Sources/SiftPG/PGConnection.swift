@@ -10,10 +10,24 @@ public struct PGError: Error, Sendable, CustomStringConvertible {
     public var sqlState: String?
     /// True when the connection itself is gone (`PQstatus` is `CONNECTION_BAD` after the failure).
     public var isConnectionLost: Bool
-    public init(_ message: String, sqlState: String? = nil, isConnectionLost: Bool = false) {
+    /// The 1-based character offset in the sent text the server points at (`PG_DIAG_STATEMENT_POSITION`), or nil.
+    public var position: Int?
+    /// The server's `DETAIL` and `HINT` lines, when it sent them.
+    public var detail: String?
+    public var hint: String?
+    /// The one-line message without the `ERROR:` prefix and the `LINE n:` context (`PG_DIAG_MESSAGE_PRIMARY`).
+    public var primaryMessage: String?
+    public init(
+        _ message: String, sqlState: String? = nil, isConnectionLost: Bool = false,
+        position: Int? = nil, detail: String? = nil, hint: String? = nil, primaryMessage: String? = nil
+    ) {
         self.message = message
         self.sqlState = sqlState
         self.isConnectionLost = isConnectionLost
+        self.position = position
+        self.detail = detail
+        self.hint = hint
+        self.primaryMessage = primaryMessage
     }
     public var description: String { message }
 }
@@ -118,6 +132,31 @@ public final class PGConnection: @unchecked Sendable {
         }
     }
 
+    /// Runs `body` inside `BEGIN READ ONLY` with `SET LOCAL statement_timeout`, on this connection's queue, so every
+    /// statement `body` runs through its `PGTransaction` shares one transaction. When `body` returns the transaction
+    /// is committed; when it throws (or a statement fails) it is rolled back, so the connection never stays
+    /// `idle in transaction`. `statementTimeout` is a server interval such as `60s`, or `0` for none.
+    public func readOnlyTransaction<T: Sendable>(
+        statementTimeout: String, _ body: @escaping @Sendable (PGTransaction) throws -> T
+    ) async throws -> T {
+        try await withCheckedThrowingContinuation { (c: CheckedContinuation<T, any Error>) in
+            queue.async {
+                do {
+                    _ = try self.run("BEGIN READ ONLY", params: [])
+                    do {
+                        _ = try self.run("SET LOCAL statement_timeout = '\(statementTimeout)'", params: [])
+                        let value = try body(PGTransaction(connection: self))
+                        _ = try self.run("COMMIT", params: [])
+                        c.resume(returning: value)
+                    } catch {
+                        _ = try? self.run("ROLLBACK", params: [])
+                        c.resume(throwing: error)
+                    }
+                } catch { c.resume(throwing: error) }
+            }
+        }
+    }
+
     /// The server process id of this session.
     public var backendPID: Int32 {
         queue.sync { conn.map { PQbackendPID($0) } ?? 0 }
@@ -139,6 +178,19 @@ public final class PGConnection: @unchecked Sendable {
 
     // Runs on `queue`.
     private func run(_ sql: String, params: [String?]) throws -> ResultPage {
+        try runRaw(sql, params: params).page
+    }
+
+    /// What one statement answered: its rows (none for a command), the command tag and the rows it touched.
+    struct RawResult {
+        var page: ResultPage
+        var commandTag: String
+        var affected: Int?
+        var returnsRows: Bool
+    }
+
+    // Runs on `queue`.
+    fileprivate func runRaw(_ sql: String, params: [String?]) throws -> RawResult {
         guard let conn else {
             markBroken()
             throw PGError("connection is closed", isConnectionLost: true)
@@ -163,20 +215,26 @@ public final class PGConnection: @unchecked Sendable {
         }
         defer { PQclear(result) }
 
+        func field(_ code: Character) -> String? {
+            PQresultErrorField(result, Int32(code.asciiValue ?? 0)).map { String(cString: $0) }
+        }
         switch PQresultStatus(result) {
         case PGRES_TUPLES_OK:
-            return Self.page(from: result)
+            return RawResult(
+                page: Self.page(from: result), commandTag: String(cString: PQcmdStatus(result)),
+                affected: Int(String(cString: PQcmdTuples(result))), returnsRows: true)
         case PGRES_COMMAND_OK, PGRES_EMPTY_QUERY:
-            return ResultPage(columns: [], rows: [])
+            return RawResult(
+                page: ResultPage(columns: [], rows: []), commandTag: String(cString: PQcmdStatus(result)),
+                affected: Int(String(cString: PQcmdTuples(result))), returnsRows: false)
         default:
-            var state: String?
-            if let f = PQresultErrorField(result, Int32(UInt8(ascii: "C"))) { state = String(cString: f) }
             // Not classified by SQLSTATE: a dropped socket has none.
             let lost = PQstatus(conn) == CONNECTION_BAD
             if lost { markBroken() }
             throw PGError(
                 String(cString: PQresultErrorMessage(result)).trimmingTrailingNewlines(),
-                sqlState: state, isConnectionLost: lost)
+                sqlState: field("C"), isConnectionLost: lost,
+                position: field("P").flatMap { Int($0) }, detail: field("D"), hint: field("H"), primaryMessage: field("M"))
         }
     }
 
@@ -217,6 +275,26 @@ public final class PGConnection: @unchecked Sendable {
             rows.append(row)
         }
         return ResultPage(columns: columns, rows: rows)
+    }
+}
+
+/// One statement's answer inside a transaction: the rows, the command tag (`SELECT 3`, `CREATE TABLE`) and the rows touched.
+public struct PGStatementResult: Sendable {
+    public var page: ResultPage
+    public var commandTag: String
+    public var affected: Int?
+    /// True for a statement that returns a row set (even an empty one), false for a plain command.
+    public var returnsRows: Bool
+}
+
+/// The statements of one `readOnlyTransaction`. Valid only inside its body, which runs on the connection's queue.
+public struct PGTransaction: @unchecked Sendable {
+    fileprivate let connection: PGConnection
+
+    /// Runs one statement and answers with its rows and command tag. Throws `PGError` (with the position and detail).
+    public func execute(_ sql: String, params: [String?] = []) throws -> PGStatementResult {
+        let raw = try connection.runRaw(sql, params: params)
+        return PGStatementResult(page: raw.page, commandTag: raw.commandTag, affected: raw.affected, returnsRows: raw.returnsRows)
     }
 }
 
