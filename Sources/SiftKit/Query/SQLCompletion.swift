@@ -119,8 +119,9 @@ enum SQLCompletion {
     /// What follows `qualifier.`: an alias or a relation of the statement gives its columns; a schema gives its
     /// relations; `schema.relation` gives the columns.
     static func members(of qualifier: [String], scan: FromScan, snapshot: SchemaSnapshot) -> [CompletionItem] {
-        if qualifier.count == 2 {
-            let id = RelationID(unquote(qualifier[0]), unquote(qualifier[1]))
+        // `db.schema.table.` is `schema.table` in Postgres: the last two parts, never the first read as an alias.
+        if qualifier.count >= 2 {
+            let id = RelationID(unquote(qualifier[qualifier.count - 2]), unquote(qualifier[qualifier.count - 1]))
             if let relation = snapshot.relation(id) { return columns(of: relation) }
             return []
         }

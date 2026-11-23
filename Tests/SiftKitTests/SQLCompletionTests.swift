@@ -86,6 +86,14 @@ private func names(_ result: CompletionResult?) -> [String] { result?.items.map(
         #expect(names(complete("SELECT bonus.|")) == ["amount"])
     }
 
+    @Test func moreThanTwoQualifierPartsUseTheLastTwo() {
+        // `db.schema.table.` is `schema.table`.
+        #expect(names(complete("SELECT x.public.orders.| FROM public.orders")) == ["id", "user_id", "total"])
+        // Not resolved: nothing, and never the first part read as an alias (`o` here is public.users).
+        #expect(names(complete("SELECT x.nope.orders.| FROM public.orders")).isEmpty)
+        #expect(names(complete("SELECT o.nope.orders.| FROM public.users o")).isEmpty)
+    }
+
     @Test func afterSchemaDotOffersItsRelations() {
         #expect(names(complete("select * from sales.|")) == ["invoices"])
         #expect(names(complete("select * from public.us|")) == ["user_roles", "users", "bonus"])
