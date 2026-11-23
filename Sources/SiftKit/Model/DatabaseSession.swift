@@ -151,7 +151,7 @@ public final class DatabaseSession {
         guard state == .ready, source?.queryRunner() != nil else { return nil }
         let made = QueryEditorModel(
             runner: { [weak self] in self?.currentQueryRunner() }, store: queryHistory ?? NoQueryHistory(),
-            identity: queryHistory == nil ? nil : mapIdentity, clock: clock)
+            identity: queryHistory == nil ? nil : mapIdentity, schema: { [weak self] in self?.snapshot }, clock: clock)
         editor = made
         return made
     }

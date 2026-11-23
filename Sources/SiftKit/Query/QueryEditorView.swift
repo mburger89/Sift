@@ -136,11 +136,17 @@ struct QueryEditorPane: Component, Equatable {
             .indentUsingSpaces(true)
             .gutterMarkerLane(true)
             .codeCaretBlink(editor.caretBlink)
-            .onKeyPress(keys: [.return, .escape, .upArrow, .downArrow, .tab]) { press in
+            .accessibilityIdentifier("query.editor")
+            .onKeyPress { press in
                 editor.handleKey(press.key, modifiers: press.modifiers) ? .handled : .ignored
             }
+            // The list follows the caret; nothing but the editor's own key handler closes it (a suggestion overlay takes no key).
+            .suggestionOverlay(
+                isPresented: Binding(get: { editor.isCompletionOpen }, set: { _ in }), attachmentAnchor: .caret
+            ) {
+                CompletionList(editor: editor).equatable()
+            }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .accessibilityIdentifier("query.editor")
     }
 }
 

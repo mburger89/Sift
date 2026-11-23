@@ -50,6 +50,12 @@ public final class QueryEditorModel {
     public var historySearch = ""
     public var historyShown = true
 
+    // The completion list. Three properties, so the editor reads only `isCompletionOpen` (which changes when the list opens or
+    // closes) and the list reads the rest (which change with each keystroke while it is open).
+    public private(set) var isCompletionOpen = false
+    var completionItems: [CompletionItem] = []
+    public private(set) var completionSelected = 0
+
     public var isRunning: Bool {
         if case .running = state { return true }
         return false
@@ -75,17 +81,21 @@ public final class QueryEditorModel {
     @ObservationIgnored private var runTask: Task<Void, Never>?
     /// Whether the editor's caret blinks while it has the focus; tests turn it off so a focused idle editor draws nothing. Never changes while the app runs.
     public var caretBlink: CodeCaretBlink = .on
-    /// The completion list the editor shows, when it is open (phase 4, task 5).
-    @ObservationIgnored var completion: CompletionState?
+    @ObservationIgnored private let schema: @MainActor () -> SchemaSnapshot?
+    /// Where the list was computed: accepting an item is honoured only while the buffer and caret are still there.
+    @ObservationIgnored private var completionAnchor: (replacing: Range<Int>, version: UInt64, caret: Int)?
 
     /// - Parameters:
     ///   - runner: the runner of the session's current source, asked at each run (a reconnect gives a new one).
     ///   - identity: what the history is kept under (`DatabaseSession.mapIdentity`), or nil to keep none.
+    ///   - schema: the session's current schema snapshot, what completion reads (no query is ever made for it).
     public init(
         runner: @escaping @MainActor () -> (any QueryRunning)?, store: any QueryHistoryStoring, identity: String?,
+        schema: @escaping @MainActor () -> SchemaSnapshot? = { nil },
         clock: any SiftClock = SystemClock(), now: @escaping @MainActor () -> Date = { Date() }, text: String = ""
     ) {
         runnerProvider = runner
+        self.schema = schema
         self.store = store
         self.identity = identity
         self.clock = clock
@@ -154,6 +164,7 @@ public final class QueryEditorModel {
     }
 
     private func start(_ jobs: [Job]) {
+        closeCompletion()
         highlighter.clearError()
         summary = .none
         batchLines = []
@@ -302,8 +313,14 @@ public final class QueryEditorModel {
 
     // MARK: Keys
 
-    /// What the editor's keys do: ⌘Return runs, ⇧⌘Return runs all, Escape cancels a run (or closes the completion list,
-    /// first). Returns whether the key was taken.
+    /// What the editor's keys do:
+    /// - ⌘Return runs, ⇧⌘Return runs all.
+    /// - With the completion list open, ↑ and ↓ move in it, Return and Tab accept, and Escape closes it, **and does not
+    ///   cancel a run** (one Escape for the list, the next for the query).
+    /// - With the list closed, Escape cancels a run in flight.
+    /// - Any other key is the editor's own, and the list is worked out again once it has typed.
+    ///
+    /// Returns whether the key was taken.
     public func handleKey(_ key: KeyEquivalent, modifiers: EventModifiers) -> Bool {
         switch key {
         case .return where modifiers.contains(.primary):
@@ -317,22 +334,88 @@ public final class QueryEditorModel {
                 return true
             }
             return false
+        case .downArrow where isCompletionOpen && modifiers.isEmpty:
+            moveCompletion(by: 1)
+            return true
+        case .upArrow where isCompletionOpen && modifiers.isEmpty:
+            moveCompletion(by: -1)
+            return true
+        case .return where isCompletionOpen && modifiers.isEmpty, .tab where isCompletionOpen && modifiers.isEmpty:
+            if acceptCompletion() { return true }
+            closeCompletion()
+            return false
         default:
+            // The editor types, deletes or moves the caret; the list follows once it has.
+            if modifiers.intersection([.primary, .control]).isEmpty { scheduleCompletionRefresh() }
             return false
         }
     }
 
-    /// Closes the completion list when it is open; returns whether it was.
+    // MARK: Completion
+
+    /// Works the list out again on the next main-actor turn, after the editor has handled the key.
+    func scheduleCompletionRefresh() {
+        Task { @MainActor [weak self] in self?.refreshCompletion() }
+    }
+
+    /// Opens, updates or closes the list for the caret now.
+    func refreshCompletion() {
+        guard buffer.selections.count == 1, buffer.primarySelection.isEmpty, let snapshot = schema() else {
+            closeCompletion()
+            return
+        }
+        let text = buffer.snapshot()
+        let caret = buffer.primarySelection.head
+        let (window, base) = Self.window(of: text, around: caret)
+        guard let found = SQLCompletion.complete(text: window, caret: caret - base, snapshot: snapshot) else {
+            closeCompletion()
+            return
+        }
+        let replacing = (found.replacing.lowerBound + base)..<(found.replacing.upperBound + base)
+        completionAnchor = (replacing, buffer.version, caret)
+        if completionItems != found.items { completionItems = found.items }
+        if completionSelected != 0 { completionSelected = 0 }
+        if !isCompletionOpen { isCompletionOpen = true }
+    }
+
+    /// The text completion reads: the whole buffer, or for a long one the 600 rows around the caret.
+    static func window(of snapshot: CodeSnapshot, around caret: Int) -> (text: String, base: Int) {
+        guard snapshot.lineCount > 1200 else { return (snapshot.text, 0) }
+        let row = snapshot.point(at: caret).row
+        let from = max(0, row - 300), to = min(snapshot.lineCount, row + 300)
+        let lower = snapshot.lineRange(from).lowerBound
+        let upper = snapshot.lineRange(to - 1).upperBound
+        return (snapshot.text(in: lower..<upper), lower)
+    }
+
+    func moveCompletion(by step: Int) {
+        guard isCompletionOpen, !completionItems.isEmpty else { return }
+        completionSelected = ((completionSelected + step) % completionItems.count + completionItems.count) % completionItems.count
+    }
+
+    /// Replaces what was typed with the chosen item and puts the caret after it. False (and nothing changes) when the
+    /// buffer or the caret has moved since the list was worked out.
     @discardableResult
-    func closeCompletion() -> Bool {
-        guard completion != nil else { return false }
-        completion = nil
+    func acceptCompletion(at index: Int? = nil) -> Bool {
+        let chosen = index ?? completionSelected
+        guard let anchor = completionAnchor, completionItems.indices.contains(chosen),
+              buffer.version == anchor.version, buffer.primarySelection.head == anchor.caret else { return false }
+        let text = completionItems[chosen].insertText
+        buffer.replace(anchor.replacing, with: text, origin: .typing)
+        let end = anchor.replacing.lowerBound + text.utf8.count
+        buffer.select(end..<end)
+        closeCompletion()
         return true
     }
-}
 
-/// What the completion list shows (task 5).
-struct CompletionState: Equatable {
-    var items: [String] = []
-    var selected = 0
+    /// Closes the list when it is open; returns whether it was.
+    @discardableResult
+    func closeCompletion() -> Bool {
+        completionAnchor = nil
+        guard isCompletionOpen else { return false }
+        isCompletionOpen = false
+        completionItems = []
+        completionSelected = 0
+        return true
+    }
 }
