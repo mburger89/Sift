@@ -91,7 +91,8 @@ public struct QueryHistoryStore: QueryHistoryStoring {
             encoder.dateEncodingStrategy = .iso8601
             let data = try encoder.encode(File(version: 1, identity: identity, entries: Array(entries.prefix(Self.limit))))
             let target = path(identity: identity)
-            // Written to a temporary file that is already private, then moved over the old one.
+            // Written to a temporary file that is already private, then swapped in for the old one in one step, so a crash
+            // leaves either the old history or the new, never none.
             let temporary = target + ".tmp"
             try? fm.removeItem(atPath: temporary)
             #if os(Windows)
@@ -99,8 +100,11 @@ public struct QueryHistoryStore: QueryHistoryStoring {
             #else
             guard fm.createFile(atPath: temporary, contents: data, attributes: [.posixPermissions: 0o600]) else { return }
             #endif
-            if fm.fileExists(atPath: target) { try fm.removeItem(atPath: target) }
-            try fm.moveItem(atPath: temporary, toPath: target)
+            if fm.fileExists(atPath: target) {
+                _ = try fm.replaceItemAt(URL(fileURLWithPath: target), withItemAt: URL(fileURLWithPath: temporary))
+            } else {
+                try fm.moveItem(atPath: temporary, toPath: target)
+            }
         } catch {
             // A history that cannot be kept is not worth breaking the editor for.
         }

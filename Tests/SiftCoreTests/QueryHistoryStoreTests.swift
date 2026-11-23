@@ -36,6 +36,17 @@ import Testing
         #expect(store.load(identity: "i") == all)
     }
 
+    @Test func aSecondSaveReplacesTheFileAndLeavesNoTemporary() throws {
+        let dir = Self.directory()
+        defer { try? FileManager.default.removeItem(atPath: dir) }
+        let store = QueryHistoryStore(directory: dir)
+        store.save(identity: "i", entries: [Self.entry(1)])
+        store.save(identity: "i", entries: [Self.entry(3), Self.entry(2)])
+        #expect(store.load(identity: "i") == [Self.entry(3), Self.entry(2)])
+        let files = try FileManager.default.contentsOfDirectory(atPath: (store.path(identity: "i") as NSString).deletingLastPathComponent)
+        #expect(files == [(store.path(identity: "i") as NSString).lastPathComponent], "\(files)")
+    }
+
     #if !os(Windows)
     @Test func theFileIsReadableByItsOwnerOnly() throws {
         let dir = Self.directory()
