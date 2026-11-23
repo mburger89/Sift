@@ -98,6 +98,22 @@ struct MapChromeTests {
         #expect(title.label == "customers" || title.value == "customers")
     }
 
+    @Test func mapThenQueryThenTableLeavesNothingBlank() async throws {
+        let rig = try await MapRig(schema: FixtureSnapshot.shop())
+        // The connection is selected, a snapshot is loaded, and no table is.
+        #expect(rig.model.detailMode == .map)
+        #expect(rig.model.selectedRelation == nil)
+        rig.model.setDetailMode(.query)
+        try await rig.window.runUntilIdle()
+        rig.model.setDetailMode(.table)
+        try await rig.window.runUntilIdle()
+        #expect(rig.model.detailMode == .table)
+        // With no table selected the Table tab is the connection's own detail, never an empty area.
+        #expect(rig.model.selection == .container(name: "shop-db"))
+        _ = try rig.window.element(identifier: "detail.title")
+        _ = try rig.window.element(identifier: "discovered.password")
+    }
+
     @Test func thePickerSwitchesModes() async throws {
         let rig = try await MapRig(schema: FixtureSnapshot.shop())
         #expect(rig.model.detailMode == .map)
