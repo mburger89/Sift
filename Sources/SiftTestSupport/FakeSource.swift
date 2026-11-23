@@ -16,6 +16,7 @@ public final class FakeSource: DatabaseSource, @unchecked Sendable {
     private var held: CheckedContinuation<Int64, any Error>?
     private var _grids: [RelationID: FakeGridSource] = [:]
     private var _gridRequests: [RelationID] = []
+    private var _runner: FakeQueryRunner?
 
     public init(schema: SchemaSnapshot, rows: [RelationID: ResultPage] = [:], counts: [RelationID: Int64] = [:]) {
         _schema = schema
@@ -109,6 +110,18 @@ public final class FakeSource: DatabaseSource, @unchecked Sendable {
     /// The grids `gridSource(for:)` handed out, in order.
     public var gridRequests: [RelationID] { lock.withLock { _gridRequests } }
     public func grid(for relation: RelationID) -> FakeGridSource? { lock.withLock { _grids[relation] } }
+
+    /// The runner `queryRunner()` hands out, made at the first ask.
+    public var runner: FakeQueryRunner {
+        lock.withLock {
+            if let _runner { return _runner }
+            let made = FakeQueryRunner()
+            _runner = made
+            return made
+        }
+    }
+
+    public func queryRunner() -> (any QueryRunning)? { runner }
 
     public func gridSource(for relation: RelationInfo) -> (any GridSource)? {
         lock.withLock {

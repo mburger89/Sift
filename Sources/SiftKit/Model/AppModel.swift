@@ -3,9 +3,9 @@ import Observation
 import SiftCore
 import SiftDocker
 
-/// What the detail area shows for a connected database: a selected table's details, or the schema map.
+/// What the detail area shows for a connected database: a selected table's details, the schema map, or the SQL editor.
 public enum DetailMode: Sendable, Equatable {
-    case table, map
+    case table, map, query
 }
 
 /// The tabs of a table's detail: its rows in the grid, or its structure (columns, keys, indexes).
@@ -116,14 +116,16 @@ public final class AppModel {
         case .saved(let id):
             guard let connection = connections.first(where: { $0.id == id }) else { return nil }
             return DatabaseSession(
-                key: key, title: connection.name, connector: environment.connector, clock: environment.clock
+                key: key, title: connection.name, connector: environment.connector, clock: environment.clock,
+                queryHistory: environment.queryHistory
             ) { _ in
                 .saved(connection, password: environment.credentials.password(for: CredentialKey(connectionID: id)))
             }
         case .container(let name):
             guard let database = discovered.first(where: { $0.containerName == name }) else { return nil }
             return DatabaseSession(
-                key: key, title: name, connector: environment.connector, clock: environment.clock
+                key: key, title: name, connector: environment.connector, clock: environment.clock,
+                queryHistory: environment.queryHistory
             ) { refreshing in
                 guard refreshing else { return .discovered(database) }
                 // A reconnect looks the container up again: it may have been recreated on another port.
@@ -167,12 +169,34 @@ public final class AppModel {
             return
         }
         switch mode {
+        case .query:
+            // The editor is the connection's, not a table's: the selection stays, and the table the map or the
+            // table view had is where Table and Map come back to.
+            detailMode = .query
         case .map:
             if case .relation(_, let id)? = selection { map(for: key).selected = id }
             detailMode = .map
         case .table:
             if let id = maps[key]?.selected { selection = .relation(key, id) }
             detailMode = .table
+        }
+    }
+
+    // MARK: The SQL editor
+
+    /// Opens the Query tab of the selected connection (⌘T): the connection the selection is on, or the only open one.
+    /// Nothing happens when no connection is open.
+    public func openQuery() {
+        let key = selection?.connection ?? (sessions.count == 1 ? sessions.keys.first : nil)
+        guard let key, sessions[key] != nil else { return }
+        if selection?.connection != key { selection = Self.node(for: key) }
+        detailMode = .query
+    }
+
+    private static func node(for key: ConnectionKey) -> SidebarNodeID {
+        switch key {
+        case .saved(let id): return .saved(id)
+        case .container(let name): return .container(name: name)
         }
     }
 

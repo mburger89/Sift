@@ -14,6 +14,7 @@ struct MapToolbar: Component {
             Picker("View", selection: Binding(get: { model.detailMode }, set: { model.setDetailMode($0) })) {
                 Text("Table").tag(DetailMode.table)
                 Text("Map").tag(DetailMode.map)
+                Text("Query").tag(DetailMode.query)
             }
             .pickerStyle(.segmented)
             .accessibilityIdentifier("map.mode")

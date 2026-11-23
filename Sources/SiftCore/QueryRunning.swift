@@ -22,7 +22,7 @@ public struct QueryFailure: Sendable, Equatable {
 }
 
 /// What one run of one statement came to.
-public struct QueryOutcome: Sendable {
+public struct QueryOutcome: Sendable, Equatable {
     public enum Kind: Sendable, Equatable {
         /// A row-returning statement: the rows captured (at most the runner's cap), and whether more existed.
         case rows(columns: [ResultColumn], rows: [[SiftValue]], truncated: Bool)

@@ -8,6 +8,8 @@ struct DetailArea: Component {
         VStack(alignment: .leading, spacing: 0) {
             if let draft = model.draft {
                 ConnectionFormView(model: model, draft: draft)
+            } else if model.detailMode == .query, let key = model.selection?.connection, let session = model.sessions[key] {
+                QueryDetailView(model: model, key: key, session: session)
             } else if model.detailMode == .map, let key = model.selection?.connection,
                       let session = model.sessions[key], session.snapshot != nil {
                 MapDetailView(model: model, key: key, session: session)
