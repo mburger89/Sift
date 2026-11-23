@@ -27,15 +27,13 @@ struct QueryResultsPane: Component, Equatable {
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("query.running")
             } else if let grid = editor.result {
-                GridContent(grid: grid).equatable()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                GridContent(grid: grid)
             } else {
                 Spacer()
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("query.results")
+        // One frame layer, with the split's limits (the pane's own answers): the grid below is deep enough already.
+        .frame(maxWidth: .infinity, minHeight: Pixels(100), idealHeight: Pixels(300), maxHeight: .infinity, alignment: .topLeading)
     }
 }
 

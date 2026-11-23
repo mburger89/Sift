@@ -1,52 +1,34 @@
 import MetalUI
 import SiftCore
 
-/// The Query tab of a connection: the toolbar, the editor over the results in a vertical split (its divider kept for
-/// the session), and the history column on the right.
+/// The Query tab of a connection: the toolbar, then the editor over the results in a vertical split (its divider kept for
+/// the session), the history column beside the editor.
+///
+/// **It is kept shallow on purpose.** The grid in the results sits below this view, the window, `DetailArea` and the split, and
+/// on Windows the test process has a 1 MB main-thread stack that a debug build's nested builders nearly fill: so this view adds
+/// no stack of its own (its children are `DetailArea`'s own), and the split is built here, not in a component of its own.
 struct QueryDetailView: Component {
     let model: AppModel
     let key: ConnectionKey
     let session: DatabaseSession
-
-    var content: some ElementGroup {
-        VStack(alignment: .leading, spacing: 0) {
-            ConnectionBanner(model: model, key: key)
-            if let editor = session.queryEditor() {
-                QueryToolbar(model: model, editor: editor).equatable()
-                Divider()
-                HStack(spacing: 0) {
-                    QuerySplit(editor: editor, store: session.querySplitStore).equatable()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    QueryHistoryColumn(editor: editor).equatable()
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                Text("This connection cannot run SQL.").foregroundColor(.secondary)
-                    .padding(Edges(all: Pixels(16)))
-                    .accessibilityIdentifier("query.unavailable")
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("query")
-    }
-}
-
-/// The editor above the results, with a draggable divider between them.
-struct QuerySplit: Component, Equatable {
     let editor: QueryEditorModel
-    let store: SplitSizesStore
-    nonisolated static func == (l: Self, r: Self) -> Bool { l.editor === r.editor && l.store === r.store }
 
     var content: some ElementGroup {
+        ConnectionBanner(model: model, key: key)
+        QueryToolbar(model: model, editor: editor).equatable()
+        Divider()
         VSplitView {
-            QueryEditorPane(editor: editor).equatable()
-                .frame(minHeight: Pixels(120), idealHeight: Pixels(300))
+            HStack(spacing: 0) {
+                QueryEditorPane(editor: editor).equatable()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                QueryHistoryColumn(editor: editor).equatable()
+            }
+            .frame(minHeight: Pixels(120), idealHeight: Pixels(300))
             QueryResultsPane(editor: editor).equatable()
-                .frame(minHeight: Pixels(100), idealHeight: Pixels(300))
         }
         .splitViewDividerIdentifier("query.divider")
-        .splitViewAutosaveName("sift.query", store: store)
+        .splitViewAutosaveName("sift.query", store: session.querySplitStore)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -73,13 +55,7 @@ struct QueryToolbar: Component, Equatable {
         let editor = editor
         let model = model
         HStack(spacing: Pixels(8)) {
-            Picker("View", selection: Binding(get: { model.detailMode }, set: { model.setDetailMode($0) })) {
-                Text("Table").tag(DetailMode.table)
-                Text("Map").tag(DetailMode.map)
-                Text("Query").tag(DetailMode.query)
-            }
-            .pickerStyle(.segmented)
-            .accessibilityIdentifier("query.mode")
+            DetailModePicker(model: model, identifier: "query.mode").equatable()
             if editor.isRunning {
                 Button("Cancel") { editor.cancel() }
                     .accessibilityIdentifier("query.cancel")
