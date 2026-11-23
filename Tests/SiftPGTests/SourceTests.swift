@@ -22,6 +22,19 @@ import Testing
     }
 
     @Test(.enabled(if: PGFixture.url != nil, gate))
+    func noQueryRunnerIsMadeAfterClose() async throws {
+        try await PGFixture.withSchemas { _, params in
+            let source = try await PGSource.connect(params)
+            let before = try #require(source.queryRunner() as? PGQueryRunner)
+            source.close()
+            #expect(source.queryRunner() == nil)
+            // The runner it had was closed with the source, and nothing was opened for the call.
+            #expect(await before.run("SELECT 1", statementTimeout: "60s").kind != .cancelled)
+            #expect(before.backendPID == nil)
+        }
+    }
+
+    @Test(.enabled(if: PGFixture.url != nil, gate))
     func firstRowsHonoursTheLimit() async throws {
         try await PGFixture.withSchemas { names, params in
             let source = try await PGSource.connect(params)
