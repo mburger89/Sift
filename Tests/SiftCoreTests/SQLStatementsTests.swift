@@ -70,3 +70,39 @@ private func statement(_ text: String, caret: Int) -> String? {
         #expect(lead("/* only") == nil)
     }
 }
+
+@Suite struct SQLErrorPositionTests {
+    @Test func aPositionCountsCharactersNotBytes() {
+        // 'héllo' is 6 characters but 7 bytes: the second comma is character 17, at byte offset 17 (the first byte is 0).
+        let text = "SELECT 'héllo' ,, 1"
+        let offset = SQLStatements.utf8Offset(ofPosition: 17, in: text)
+        #expect(offset == 17)
+        #expect(text.utf8[text.utf8.index(text.utf8.startIndex, offsetBy: offset)] == 0x2C)
+        #expect(SQLStatements.utf8Offset(ofPosition: 1, in: text) == 0)
+        #expect(SQLStatements.utf8Offset(ofPosition: 999, in: text) == text.utf8.count)
+        // A code point outside the BMP is still one character.
+        #expect(SQLStatements.utf8Offset(ofPosition: 3, in: "a😀b") == 5)
+    }
+
+    @Test func theTokenAtAnOffsetIsTheOneContainingIt() {
+        let text = "select foo, bar from t"
+        func token(_ offset: Int) -> String? {
+            SQLStatements.tokenRange(atUTF8: offset, in: text).map { String(decoding: Array(text.utf8)[$0], as: UTF8.self) }
+        }
+        #expect(token(0) == "select")
+        #expect(token(9) == "foo")
+        #expect(token(10) == ",")
+        #expect(token(11) == "bar")         // in whitespace: the next token
+        #expect(token(6) == "foo")
+        #expect(token(text.utf8.count - 1) == "t")
+        #expect(token(text.utf8.count) == nil)
+    }
+
+    @Test func aTokenOnALaterLineIsFoundThroughLineEndsAndStrings() {
+        let text = "select 'a\nb', nope\nfrom t"
+        let range = SQLStatements.tokenRange(atUTF8: 14, in: text)
+        #expect(range.map { String(decoding: Array(text.utf8)[$0], as: UTF8.self) } == "nope")
+        // A multi-line string is one token across lines? It is one per line: the offset inside it gets that line's part.
+        #expect(SQLStatements.tokenRange(atUTF8: 11, in: text).map { String(decoding: Array(text.utf8)[$0], as: UTF8.self) } == "b'")
+    }
+}

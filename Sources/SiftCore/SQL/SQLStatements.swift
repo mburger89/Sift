@@ -40,6 +40,49 @@ public enum SQLStatements {
         return nil
     }
 
+    /// The UTF-8 offset in `text` of the 1-based position the server reports for an error. The server counts characters
+    /// (code points) of the text it was sent, so a multi-byte character before the error counts once. A position past
+    /// the end clamps to the end.
+    public static func utf8Offset(ofPosition position: Int, in text: String) -> Int {
+        let scalars = text.unicodeScalars
+        let index = scalars.index(scalars.startIndex, offsetBy: max(0, position - 1), limitedBy: scalars.endIndex) ?? scalars.endIndex
+        return text.utf8.distance(from: text.utf8.startIndex, to: index)
+    }
+
+    /// What an error underlines: the token the 1-based character `position` falls in (or, in whitespace, the next one),
+    /// as UTF-8 offsets into `sent`, the text the server was sent. A position at the end of the text underlines nothing
+    /// there: an empty range at the end.
+    public static func errorRange(position: Int, in sent: String) -> Range<Int> {
+        let offset = utf8Offset(ofPosition: position, in: sent)
+        return tokenRange(atUTF8: offset, in: sent) ?? offset..<offset
+    }
+
+    /// The token at a UTF-8 offset, as a range of UTF-8 offsets: the token that contains it, or, when the offset is
+    /// in whitespace, the next token. Nil when there is none (the offset is at or past the last token). Comments are
+    /// tokens too: an error never points into one, but a position at the end of the text does not fall on them.
+    public static func tokenRange(atUTF8 offset: Int, in text: String) -> Range<Int>? {
+        let bytes = Array(text.utf8)
+        var state = SQLLexState.normal
+        var lineStart = 0
+        while lineStart <= bytes.count {
+            var lineEnd = lineStart
+            while lineEnd < bytes.count, bytes[lineEnd] != 0x0A { lineEnd += 1 }
+            let (tokens, end) = bytes.withUnsafeBufferPointer { all in
+                SQLLineLexer.lex(bytes: UnsafeBufferPointer(rebasing: all[lineStart..<lineEnd]), from: state)
+            }
+            state = end
+            // From the offset's own line on, the first token that ends after the offset.
+            if offset <= lineEnd {
+                let local = max(0, offset - lineStart)
+                if let hit = tokens.first(where: { $0.kind != .whitespace && $0.range.upperBound > local }) {
+                    return (lineStart + hit.range.lowerBound)..<(lineStart + hit.range.upperBound)
+                }
+            }
+            lineStart = lineEnd + 1
+        }
+        return nil
+    }
+
     // MARK: Internals
 
     /// A stretch between top-level semicolons, as UTF-8 offsets: `start..<end` without its `;`, and the part of it that is

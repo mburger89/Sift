@@ -332,6 +332,30 @@ public final class SQLTokenCache {
     /// The state line `line` starts in.
     public func startState(line: Int) -> SQLLexState { starts[line] }
 
+    /// Lexes every line from `from` on again, for an edit whose shape is not one replaced span (several edits at once).
+    /// Returns the lines it lexed.
+    @discardableResult
+    public func updateAll(lines: (Int) -> Substring, lineCount: Int, from: Int) -> Range<Int> {
+        guard lineCount > 0 else { return update(lines: lines, lineCount: 0, editedFrom: 0) }
+        let first = max(0, min(from, lineCount - 1, starts.count))
+        let keep = min(first, starts.count)
+        let startState = keep == 0 ? SQLLexState.normal : (keep < starts.count ? starts[keep] : finalState)
+        starts.removeSubrange(keep...)
+        lineTokens.removeSubrange(keep...)
+        starts.append(contentsOf: repeatElement(.normal, count: lineCount - keep))
+        lineTokens.append(contentsOf: repeatElement([], count: lineCount - keep))
+        var state = startState
+        for i in keep..<lineCount {
+            starts[i] = state
+            let result = SQLLineLexer.lex(lines(i).utf8, from: state)
+            lineTokens[i] = result.tokens
+            state = result.end
+        }
+        finalState = state
+        relexedTotal += lineCount - keep
+        return keep..<lineCount
+    }
+
     /// The state the last line ends in.
     public var endState: SQLLexState { finalState }
 
