@@ -97,11 +97,12 @@ struct GridCostTests {
         let table = try window.element(identifier: "grid.table")
         source.holdsPages = true
         window.scroll(at: window.centre(of: table), byDeltaX: 0, deltaY: -24 * 5000)
-        try await window.runUntil { source.pageCalls.count == 2 }
+        try await window.runUntil { source.pageCalls.count >= 2 }
         try await window.runUntilIdle()
         let tableBodies = GridTable.bodyCount, inspector = ValueInspector.bodyCount, body = InspectorBody.bodyCount
         source.releaseAll()
-        try await window.runUntil { model.cachedPages.count == 2 }
+        // `>=`: the far page and the one the scroll also asked for can land in one round, and `== 2` would then never hold.
+        try await window.runUntil { model.cachedPages.count >= 2 }
         try await window.runUntilIdle()
         #expect(GridTable.bodyCount > tableBodies, "the page did not land in the table")
         #expect(ValueInspector.bodyCount == inspector, "the inspector rebuilt")

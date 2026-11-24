@@ -15,7 +15,7 @@ struct ValueInspector: Component, Equatable {
         let grid = grid
         VStack(alignment: .leading, spacing: Pixels(8)) {
             if let position = grid.activePosition {
-                InspectorBody(grid: grid, position: position)
+                InspectorBody(grid: grid, position: position).equatable()
             } else {
                 Text("Select a cell to see its value.").font(size: 12).foregroundColor(.secondary)
                     .accessibilityIdentifier("inspector.empty")
@@ -35,12 +35,16 @@ enum InspectorLimits {
     static let jsonChildren = 200
 }
 
-struct InspectorBody: Component {
+/// Equatable, so its `content` runs again only when the cell changes or something it read does (the selection, the links,
+/// the page of a value still on its way). Left bare, it is re-evaluated by every layout pass that reaches it, and a frame
+/// that cannot replay (a loading animation running, a quarantined subtree) reaches it whenever a page lands elsewhere.
+struct InspectorBody: Component, Equatable {
     /// How many times `content` has run, for the cost pins (debug builds only).
     @MainActor static var bodyCount = 0
 
     let grid: GridModel
     let position: GridPosition
+    nonisolated static func == (l: Self, r: Self) -> Bool { l.grid === r.grid && l.position == r.position }
 
     var content: some ElementGroup {
         let _ = Self.countBody()
