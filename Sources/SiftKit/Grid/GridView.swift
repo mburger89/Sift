@@ -146,7 +146,7 @@ struct GridTable: Component, Equatable {
 
     @MainActor
     static func cell(
-        _ grid: GridModel, _ columns: [ResultColumn], _ row: GridRowRef, _ c: Int, _ timeZone: TimeZone, _ linkColumns: Set<Int> = []
+        _ grid: GridModel, _ columns: [ResultColumn], _ row: GridRowRef, _ c: Int, _ timeZone: TimeZone, _ linkColumns: Set<Int>
     ) -> GridCell {
         let id = "grid.cell.\(row.ordinal).\(c)"
         let mark = Self.cellMark(grid.mark(row: row.ordinal), column: c)
