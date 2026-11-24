@@ -44,20 +44,26 @@ public enum RecencyColumns {
         GridSort(column: column, ascending: false, nullsLast: relation.columns[column].isNullable)
     }
 
-    /// Newest first on the first candidate, or nil when none exists or sorting on it would be a big sort.
+    /// The first candidate whose newest-first sort is cheap, or nil when none exists or every one would be a big sort.
     /// Cheap means: a NOT NULL candidate leading a non-partial btree index (the primary key counts), or an
     /// estimate under `cheapRowLimit` rows or unknown. A nullable candidate gets no index help, as its
-    /// `NULLS LAST` order is not the index's backward order.
-    public static func defaultSort(for relation: RelationInfo) -> GridSort? {
-        guard let first = candidates(for: relation).first else { return nil }
-        let column = relation.columns[first]
-        let indexed =
-            relation.primaryKey?.columns.first == column.name
-            || relation.indexes.contains { $0.method == "btree" && $0.predicate == nil && $0.columns.first == column.name }
+    /// `NULLS LAST` order is not the index's backward order. A later candidate stands in for an expensive first one
+    /// (an unindexed `created_at` ahead of a `bigserial` key).
+    public static func defaultColumn(for relation: RelationInfo) -> Int? {
         var small = true
         if case .estimated(let n) = relation.rowEstimate { small = n < Int64(cheapRowLimit) }
-        guard (indexed && !column.isNullable) || small else { return nil }
-        return newestSort(column: first, in: relation)
+        return candidates(for: relation).first { index in
+            let column = relation.columns[index]
+            let indexed =
+                relation.primaryKey?.columns.first == column.name
+                || relation.indexes.contains { $0.method == "btree" && $0.predicate == nil && $0.columns.first == column.name }
+            return (indexed && !column.isNullable) || small
+        }
+    }
+
+    /// Newest first on `defaultColumn(for:)`, or nil when there is none.
+    public static func defaultSort(for relation: RelationInfo) -> GridSort? {
+        defaultColumn(for: relation).map { newestSort(column: $0, in: relation) }
     }
 
     /// `format_type` output without a precision: `timestamp(3) with time zone` becomes `timestamp with time zone`.

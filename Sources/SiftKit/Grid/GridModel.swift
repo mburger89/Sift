@@ -64,6 +64,9 @@ public final class GridModel {
     /// Newest-first sorts, one per recency candidate in candidate order; set by the session. Empty hides the toggle.
     public var recencySorts: [GridSort] = []
     public var recencyColumns: [Int] { recencySorts.map(\.column) }
+    /// The recency column the toggle starts with: the first cheap candidate, which is not always the first one.
+    /// Nil means the first of `recencySorts`.
+    public var defaultNewestColumn: Int?
     private var chosenNewestColumn: Int?
 
     public let source: any GridSource
@@ -77,10 +80,11 @@ public final class GridModel {
         return recencySorts.contains(sort)
     }
 
-    /// The recency column the toggle sorts by: the one the query sorts by now, else the one chosen, else the first.
+    /// The recency column the toggle sorts by: the one the query sorts by now, else the one chosen, else the default, else the first.
     public var newestColumn: Int? {
         if let sort = query.sort, recencySorts.contains(sort) { return sort.column }
         if let chosen = chosenNewestColumn, recencyColumns.contains(chosen) { return chosen }
+        if let preferred = defaultNewestColumn, recencyColumns.contains(preferred) { return preferred }
         return recencySorts.first?.column
     }
 

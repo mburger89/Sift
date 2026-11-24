@@ -252,6 +252,16 @@ struct GridModelTests {
         for _ in 0..<50 { await Task.yield() }
         #expect(second.count == .estimated(2_500_000), "a cancelled count still landed")
     }
+
+    @Test func theNewestToggleStartsOnTheDefaultColumnNotJustTheFirst() async throws {
+        let model = try await loaded(FakeGridSource(trueCount: 10))
+        model.recencySorts = [GridSort(column: 1, ascending: false), GridSort(column: 0, ascending: false)]
+        #expect(model.newestColumn == 1)
+        model.defaultNewestColumn = 0
+        #expect(model.newestColumn == 0)
+        model.setNewestFirst(true)
+        #expect(model.query.sort?.column == 0)
+    }
 }
 
 enum GridTestError: Error { case timedOut(String) }

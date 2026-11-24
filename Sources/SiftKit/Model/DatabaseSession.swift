@@ -139,6 +139,7 @@ public final class DatabaseSession {
         let model = GridModel(
             source: gridSource, clock: clock, initialQuery: GridQuery(sort: RecencyColumns.defaultSort(for: relation)))
         model.recencySorts = RecencyColumns.candidates(for: relation).map { RecencyColumns.newestSort(column: $0, in: relation) }
+        model.defaultNewestColumn = RecencyColumns.defaultColumn(for: relation)
         if let current = source {
             model.onConnectionLost = { [weak self] error in _ = self?.noticeLoss(error, of: current) }
         }

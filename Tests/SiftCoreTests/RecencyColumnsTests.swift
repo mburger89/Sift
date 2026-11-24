@@ -102,4 +102,19 @@ import Testing
         let relation = Self.relation([id], pk: ["id"], estimate: .estimated(9_000_000))
         #expect(RecencyColumns.defaultSort(for: relation) == GridSort(column: 0, ascending: false, nullsLast: false))
     }
+
+    @Test func anExpensiveFirstCandidateFallsBackToTheFirstCheapOne() {
+        // An unindexed created_at on a big table, and a bigserial primary key: id DESC is the cheap newest-first.
+        let relation = Self.relation(
+            [
+                ColumnInfo(name: "id", ordinal: 1, typeName: "bigint", isNullable: false, defaultExpression: "nextval('t_id_seq'::regclass)"),
+                ColumnInfo(name: "created_at", ordinal: 2, typeName: "timestamp with time zone", isNullable: false, defaultExpression: "now()"),
+            ], pk: ["id"], estimate: .estimated(5_000_000))
+        #expect(RecencyColumns.candidates(for: relation) == [1, 0])
+        #expect(RecencyColumns.defaultColumn(for: relation) == 0)
+        #expect(RecencyColumns.defaultSort(for: relation)?.column == 0)
+        // Nothing cheap: as before, no default.
+        let nothing = Self.relation([ColumnInfo(name: "created_at", ordinal: 1, typeName: "timestamptz", isNullable: false)], estimate: .estimated(5_000_000))
+        #expect(RecencyColumns.defaultColumn(for: nothing) == nil && RecencyColumns.defaultSort(for: nothing) == nil)
+    }
 }
