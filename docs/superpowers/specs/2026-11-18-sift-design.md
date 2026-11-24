@@ -34,7 +34,7 @@ Two reasons, equal weight:
     - `NULL` drawn distinctly from an empty value.
 - **Checking what landed:**
   - newest rows first, ordered by a timestamp or serial column;
-  - "what changed since I last looked": re-run the query and highlight the new or changed rows;
+  - "what changed since I last looked": re-run the query and highlight the new or changed rows. Changes are rows whose `xmin` is newer than the marker taken at the last look; deleted rows are not shown;
   - foreign keys you can click to jump to the referenced row, and a back-link from a row to the rows that reference it.
 - **Schema map** (requested by the user, 2026-11-18): a view that draws the database as a map, so the user can see it as a whole.
   - Each table is a node card showing its name, its key columns and its row count. Each foreign key is a link drawn from the referencing column to the referenced table.
@@ -100,7 +100,7 @@ Each phase is planned (Opus), built by Sonnet agents and merged when green.
 2b. **Schema map.** It needs only the schema metadata from phase 2: the layered layout, the card canvas with pan, zoom and minimap, neighbour highlighting, and opening a table from it. It can run in parallel with phase 1.
 3. **Grid browsing.** `Table` over a paged result source, with type rendering, sort, filter and search. **Built** (PR "Phase 3: grid browsing"; plan `docs/superpowers/plans/2026-11-21-sift-phase3-grid.md`).
 4. **SQL editor.** The tokenizer, run and cancel, history, and results. **Built** (PR "Phase 4: SQL editor"; plan `docs/superpowers/plans/2026-11-23-sift-phase4-sql-editor.md`).
-5. **Checking what landed.** Newest-first, "changed since I last looked", and following foreign keys forward and back.
+5. **Checking what landed.** Newest-first, "changed since I last looked", and following foreign keys forward and back. **Built** (PR "Phase 5: checking what landed"; plan `docs/superpowers/plans/2026-11-23-sift-phase5-landed.md`).
 6. **SQLite and CSV sources, and CSV export.**
 7. **Edit mode, packaging** (a macOS .app, with Linux and Windows archives) and the SSH tunnel (1.x).
 
@@ -108,7 +108,7 @@ Each phase is planned (Opus), built by Sonnet agents and merged when green.
 
 Visual design within MetalUI's defaults, the internal APIs, paging sizes and the exact interaction details. When a choice is between a SwiftUI-shaped and a custom approach, it follows MetalUI's rule: SwiftUI is the design authority.
 
-## 11. MetalUI gaps (phases 3 and 4)
+## 11. MetalUI gaps (phases 3–5)
 
 Phase 3 is the first consumer of `Table`, cell mode (`tableActiveCell`) and `copyable`. Each gap is filed as MetalUI work, under MetalUI's rules, and is never hacked around in Sift. Numbering continues the phase-2 plan's table (G1 to G12; G1 `SecureField`, G6 `Table` and G12 `textSelection` are answered by MetalUI at `dc52cd37`).
 
@@ -119,3 +119,5 @@ Phase 3 is the first consumer of `Table`, cell mode (`tableActiveCell`) and `cop
 | G15 | **`CodeStyle` has no italic or weight.** A highlight style carries a foreground, a background and an underline, so a `CodeView` cannot draw comments in italic. The SQL editor's decision is "comments `.secondary` italic". Repro: `CodeStyle(foreground: .secondary)` is the whole of what a comment style can say (`CodeStyle` in `Sources/MetalUI/Code/CodeDecorations.swift`); a run of it draws upright. | `SQLTheme.comment`, `SQLHighlighterTests/keywordsStringsAndCommentsGetTheirStyles` | No | Comments are `.secondary` and upright, in one place (`SQLTheme`). Italic arrives with the MetalUI change; nothing else in Sift moves. |
 | G16 | **`TestWindow.typeText` drops a newline.** `typeText("a\nb")` types `ab`: the `\n` is neither a character nor a Return key press, and nothing says so. Repro: a `CodeView` holding `""`, focused; `window.typeText("select 1;\nselect 2;")` leaves `select 1;select 2;` in the buffer. | `QueryViewTests` | No | The test types the line, then `typeKey(.return)`, then the next line. |
 | G17 | **Windows test-worker threads have a 1 MB stack.** In a debug build, a large result builder held inline among its siblings (a 3-segment `Picker` inside `MapToolbar`'s `HStack`) gets a stack frame of about 1.2 MB and overflows it (`c00000fd`; MetalUI PE-K). | `DetailModePicker`, `MapToolbar` | No | Sizeable builders go in their own `Component, Equatable` used with `.equatable()` (`DetailModePicker`), and views are kept shallow. |
+| G18 | **A `Component` has no `.accessibilityValue` modifier.** | `GridCell`, `GridCellText` | No | `GridCellText` applies `.accessibilityValue` on each `Text` branch. |
+| G19 | **MetalUITesting cannot read an element's drawn text colour.** | Link-coloured FK cells (`GridCell`) | No | Tests pin the link colour through `GridTable.linkColumns` and the Equatable `GridCell.isLink` input, not through painted pixels. |

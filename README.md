@@ -6,9 +6,9 @@ It is for checking that what your code meant to write actually landed in a Postg
 
 Design: [docs/superpowers/specs/2026-11-18-sift-design.md](docs/superpowers/specs/2026-11-18-sift-design.md)
 
-## Status: phase 2b, the schema map
+## Status: phase 5, checking what landed
 
-Selecting a connected database opens its schema map: a deterministic layered layout with pan, zoom, a minimap, fly-to search (Cmd/Ctrl-F), neighbour spotlight on hover, double-click to open a table, level of detail and culling, and dragged positions remembered per database. The Table or Map picker switches the detail area.
+Selecting a connected database opens its schema map (pan, zoom, a minimap, fly-to search, double-click to open a table) or a table in a paged grid, and the SQL editor runs and cancels queries with history. Phase 5 adds the checks for what your code wrote: a table opens newest-first when that is cheap, Refresh (Cmd/Ctrl-R) highlights the rows that changed since you last looked and Only changes narrows to them, a foreign key is followed with a double-click, Return, the inspector or the row menu, and Back and Forward (Cmd/Ctrl-[ and Cmd/Ctrl-]) retrace the jumps.
 
 ### Phase 0: libpq from Swift
 
