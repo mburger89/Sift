@@ -68,6 +68,9 @@ public struct PGRelationQuery: Sendable {
         }
     }
 
+    /// The query's change filter, or nil when the relation has no `xmin` to compare.
+    private func effectiveChanges(_ query: GridQuery) -> ChangeFilter? { supportsChanges ? query.changes : nil }
+
     private static let changedExpression = "age(xmin) <= age($1::xid)"
 
     // MARK: Pages
@@ -75,7 +78,7 @@ public struct PGRelationQuery: Sendable {
     public func pageSQL(index: Int, size: Int, query: GridQuery, after: [SiftValue]?) -> (sql: String, params: [String?]) {
         var params: [String?] = []
         // The marker is bound first, so the flag is `$1` and every other parameter is numbered after it.
-        let changes = supportsChanges ? query.changes : nil
+        let changes = effectiveChanges(query)
         if let changes { params.append(changes.since) }
         var sql = "SELECT " + selectList(flagged: changes != nil) + " FROM " + PGIdentifier.qualified(relation.id)
         var conditions = changes?.only == true ? [Self.changedExpression] : []
@@ -98,7 +101,7 @@ public struct PGRelationQuery: Sendable {
         var params: [String?] = []
         var sql = "SELECT count(*) FROM " + PGIdentifier.qualified(relation.id)
         var conditions: [String] = []
-        if supportsChanges, let changes = query.changes, changes.only {
+        if let changes = effectiveChanges(query), changes.only {
             params.append(changes.since)
             conditions.append(Self.changedExpression)
         }

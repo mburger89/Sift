@@ -75,6 +75,7 @@ public struct GridQuery: Sendable, Equatable {
     public var filters: [GridFilter]
     public var search: String?
     /// With it set, each row has one extra trailing `.bool(changed)` value, after `ctid`.
+    /// A source whose `supportsChanges` is false ignores it, so callers gate on `supportsChanges`.
     public var changes: ChangeFilter?
 
     public init(sort: GridSort? = nil, filters: [GridFilter] = [], search: String? = nil, changes: ChangeFilter? = nil) {
@@ -85,6 +86,7 @@ public struct GridQuery: Sendable, Equatable {
     }
 
     /// True when rows are narrowed (filters, a search or only-changes), so the catalog's estimate no longer applies.
+    /// Only-changes counts even for a source that ignores `changes` (`supportsChanges` false): callers gate on that.
     public var narrows: Bool { !filters.isEmpty || !(search ?? "").isEmpty || changes?.only == true }
 }
 

@@ -55,26 +55,51 @@ import Testing
         #expect(RecencyColumns.defaultSort(for: relation) == nil)
     }
 
+    static func created(null: Bool, type: String = "timestamptz") -> [ColumnInfo] {
+        [
+            Self.col("id", "bigint"),
+            ColumnInfo(name: "created_at", ordinal: 2, typeName: type, isNullable: null),
+        ]
+    }
+
     @Test func theDefaultIsOnOnlyWhenIndexedOrSmall() {
-        let columns = [Self.col("id", "bigint"), Self.col("created_at", "timestamptz")]
-        let unindexed = Self.relation(columns, estimate: .estimated(5_000_000))
-        #expect(RecencyColumns.defaultSort(for: unindexed) == nil)
-
         let index = IndexInfo(name: "i", columns: ["created_at"], isUnique: false, isPrimary: false, method: "btree", definition: "")
-        let indexed = Self.relation(columns, indexes: [index], estimate: .estimated(5_000_000))
-        #expect(RecencyColumns.defaultSort(for: indexed) == GridSort(column: 1, ascending: false, nullsLast: true))
+        let big = RowEstimate.estimated(5_000_000)
 
+        // NOT NULL: an index leading on it makes it cheap, and the sort reads DESC NULLS FIRST.
+        let notNull = Self.created(null: false)
+        #expect(RecencyColumns.defaultSort(for: Self.relation(notNull, estimate: big)) == nil)
+        #expect(RecencyColumns.defaultSort(for: Self.relation(notNull, indexes: [index], estimate: big)) == GridSort(column: 1, ascending: false, nullsLast: false))
         let hash = IndexInfo(name: "h", columns: ["created_at"], isUnique: false, isPrimary: false, method: "hash", definition: "")
-        #expect(RecencyColumns.defaultSort(for: Self.relation(columns, indexes: [hash], estimate: .estimated(5_000_000))) == nil)
+        #expect(RecencyColumns.defaultSort(for: Self.relation(notNull, indexes: [hash], estimate: big)) == nil)
 
-        let small = Self.relation(columns, estimate: .estimated(50_000))
-        #expect(RecencyColumns.defaultSort(for: small) == GridSort(column: 1, ascending: false, nullsLast: true))
-        #expect(RecencyColumns.defaultSort(for: Self.relation(columns)) == GridSort(column: 1, ascending: false, nullsLast: true))
+        // Nullable: an index cannot serve NULLS LAST, so only a small or unknown estimate is cheap.
+        let nullable = Self.created(null: true)
+        #expect(RecencyColumns.defaultSort(for: Self.relation(nullable, indexes: [index], estimate: big)) == nil)
+        #expect(RecencyColumns.defaultSort(for: Self.relation(nullable, estimate: .estimated(50_000))) == GridSort(column: 1, ascending: false, nullsLast: true))
+        #expect(RecencyColumns.defaultSort(for: Self.relation(nullable)) == GridSort(column: 1, ascending: false, nullsLast: true))
+    }
+
+    @Test func newestSortPutsNullsLastOnlyForNullableColumns() {
+        let relation = Self.relation(Self.created(null: true) + [ColumnInfo(name: "seen", ordinal: 3, typeName: "date", isNullable: false)])
+        #expect(RecencyColumns.newestSort(column: 1, in: relation) == GridSort(column: 1, ascending: false, nullsLast: true))
+        #expect(RecencyColumns.newestSort(column: 2, in: relation) == GridSort(column: 2, ascending: false, nullsLast: false))
+    }
+
+    @Test func aPrecisionQualifiedTimestampIsTimestampLike() {
+        let relation = Self.relation(Self.created(null: false, type: "timestamp(3) with time zone"))
+        #expect(RecencyColumns.candidates(for: relation) == [1])
+    }
+
+    @Test func aPartialIndexDoesNotMakeItCheap() {
+        let partial = IndexInfo(name: "p", columns: ["created_at"], isUnique: false, isPrimary: false, method: "btree", predicate: "id > 1", definition: "")
+        let relation = Self.relation(Self.created(null: false), indexes: [partial], estimate: .estimated(5_000_000))
+        #expect(RecencyColumns.defaultSort(for: relation) == nil)
     }
 
     @Test func aPrimaryKeyIntegerIsCheapToSortOn() {
-        let relation = Self.relation(
-            [Self.col("id", "bigint", identity: .always)], pk: ["id"], estimate: .estimated(9_000_000))
-        #expect(RecencyColumns.defaultSort(for: relation) == GridSort(column: 0, ascending: false, nullsLast: true))
+        let id = ColumnInfo(name: "id", ordinal: 1, typeName: "bigint", isNullable: false, identity: .always)
+        let relation = Self.relation([id], pk: ["id"], estimate: .estimated(9_000_000))
+        #expect(RecencyColumns.defaultSort(for: relation) == GridSort(column: 0, ascending: false, nullsLast: false))
     }
 }

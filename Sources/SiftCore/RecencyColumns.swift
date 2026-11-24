@@ -37,18 +37,27 @@ public enum RecencyColumns {
         return result
     }
 
-    /// Newest first on the first candidate, or nil when none exists or sorting on it would be a big sort
-    /// (not the lead of a btree index, over a relation estimated at `cheapRowLimit` rows or more).
+    /// Newest first on `column`. A NOT NULL column sorts `DESC NULLS FIRST`, which a default btree scanned
+    /// backward serves (and keyset still works); a nullable one sorts `DESC NULLS LAST`, so a row with no
+    /// timestamp is not "newest".
+    public static func newestSort(column: Int, in relation: RelationInfo) -> GridSort {
+        GridSort(column: column, ascending: false, nullsLast: relation.columns[column].isNullable)
+    }
+
+    /// Newest first on the first candidate, or nil when none exists or sorting on it would be a big sort.
+    /// Cheap means: a NOT NULL candidate leading a non-partial btree index (the primary key counts), or an
+    /// estimate under `cheapRowLimit` rows or unknown. A nullable candidate gets no index help, as its
+    /// `NULLS LAST` order is not the index's backward order.
     public static func defaultSort(for relation: RelationInfo) -> GridSort? {
         guard let first = candidates(for: relation).first else { return nil }
-        let name = relation.columns[first].name
+        let column = relation.columns[first]
         let indexed =
-            relation.primaryKey?.columns.first == name
-            || relation.indexes.contains { $0.method == "btree" && $0.predicate == nil && $0.columns.first == name }
+            relation.primaryKey?.columns.first == column.name
+            || relation.indexes.contains { $0.method == "btree" && $0.predicate == nil && $0.columns.first == column.name }
         var small = true
         if case .estimated(let n) = relation.rowEstimate { small = n < Int64(cheapRowLimit) }
-        guard indexed || small else { return nil }
-        return GridSort(column: first, ascending: false, nullsLast: true)
+        guard (indexed && !column.isNullable) || small else { return nil }
+        return newestSort(column: first, in: relation)
     }
 
     /// `format_type` output without a precision: `timestamp(3) with time zone` becomes `timestamp with time zone`.
