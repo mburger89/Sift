@@ -182,4 +182,41 @@ struct GridChangesViewTests {
         for _ in 0..<50 { await Task.yield() }
         #expect(src.markerCalls == 2, "the map refreshed the grid")
     }
+
+    @Test func primaryRKeepsTheGridWhenOnlyTheEstimateMoved() async throws {
+        let src = source(changed: [2])
+        let (rig, window, model) = try await open(src)
+        // Autovacuum moved reltuples between the open and the refresh; the structure is the same.
+        var moved = rig.sources[0].schema
+        let index = try #require(moved.relations.firstIndex { $0.id == orders })
+        var relations = moved.relations
+        relations[index].rowEstimate = .estimated(12345)
+        moved = SchemaSnapshot(
+            serverVersion: moved.serverVersion, schemas: moved.schemas, relations: relations, foreignKeys: moved.foreignKeys)
+        rig.sources[0].schema = moved
+        window.typeKey("r", modifierFlags: .primary)
+        try await window.runUntil { src.markerCalls == 2 && model.changesSince != nil && !model.isLoading }
+        try await window.runUntilIdle()
+        for _ in 0..<50 { await Task.yield() }
+        #expect(rig.model.sessions[key]?.existingGrid(for: orders) === model, "the grid was dropped")
+        #expect(model.changesSince != nil)
+        #expect(window.hasElement(identifier: "grid.changes.since"))
+        #expect(model.mark(row: 2) != nil)
+    }
+
+    @Test func aChangedStructureStartsTheGridAgain() async throws {
+        let src = source(changed: [2])
+        let (rig, window, model) = try await open(src)
+        var snapshot = rig.sources[0].schema
+        var relations = snapshot.relations
+        let index = try #require(relations.firstIndex { $0.id == orders })
+        relations[index].columns.removeLast()
+        snapshot = SchemaSnapshot(
+            serverVersion: snapshot.serverVersion, schemas: snapshot.schemas, relations: relations, foreignKeys: snapshot.foreignKeys)
+        rig.sources[0].schema = snapshot
+        await rig.model.sessions[key]?.refreshSchema()
+        #expect(rig.model.sessions[key]?.existingGrid(for: orders) == nil)
+        _ = window
+        _ = model
+    }
 }

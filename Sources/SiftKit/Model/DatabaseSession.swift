@@ -196,10 +196,17 @@ public final class DatabaseSession {
             _ = noticeLoss(error, of: source)
             return
         }
-        // A relation whose structure changed starts its grid again; the others keep theirs.
-        for (id, grid) in grids where snapshot?.relation(id) != grid.relation {
-            grid.model.close()
-            grids[id] = nil
+        // A relation whose structure changed starts its grid again; the others keep theirs. Only the structure counts:
+        // `reltuples` moves on its own, and a grid dropped for it would lose its highlight, sort and cursor. A kept
+        // grid's pager keeps the estimate it was made with (it is stale until the grid is reopened); the stored
+        // relation is current.
+        for (id, grid) in grids {
+            if let current = snapshot?.relation(id), current.sameStructure(as: grid.relation) {
+                grids[id] = (grid.model, current)
+            } else {
+                grid.model.close()
+                grids[id] = nil
+            }
         }
         // The keys can change with no change to the relation itself (another table added a reference).
         if let snapshot { for (id, grid) in grids { grid.model.links = GridLinks(snapshot: snapshot, relation: id) } }
