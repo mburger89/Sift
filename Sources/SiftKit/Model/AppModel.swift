@@ -74,6 +74,13 @@ public final class AppModel {
 
     /// Refresh (⌘R): looks for containers again and re-reads the schema of every open connection.
     public func refresh() async {
+        // The grid that is showing looks again too (before any await: a shortcut acts on what is on screen now). The
+        // map, the Structure tab and the Query tab do not refresh a grid.
+        if detailMode == .table, relationTab == .rows, case .relation(let key, let id)? = selection,
+            let grid = sessions[key]?.existingGrid(for: id)
+        {
+            grid.refresh()
+        }
         await refreshDiscovery()
         for session in sessions.values.sorted(by: { $0.title < $1.title }) { await session.refreshSchema() }
     }

@@ -362,6 +362,35 @@ struct GridChangesTests {
         #expect(model.query.changes?.since == "20")
     }
 
+    @Test func aRollbackThenASortThenARefreshBeforeAnyPageHasNoStaleCopy() async throws {
+        let source = source(changed: [2])
+        source.setMarkers(["10", "20", "30", "40"])
+        let model = try await opened(source)
+        source.setValue(.text("new"), row: 2, column: 1)
+        try await refreshed(model, source, markers: 2)
+        #expect(model.mark(row: 2) == .changed(cells: [1]))
+        // The second refresh's re-read is refused: the look rolls back to the first one.
+        source.holdsMarkers = true
+        model.refresh()
+        try await settle("marker") { source.markerCalls == 3 }
+        source.failNext([SourceError(.server(sqlState: "XX000"), "refused")])
+        source.releaseAll()
+        try await settle("rolled back") { model.error != nil }
+        try await settle("idle") { !model.isLoading }
+        source.holdsMarkers = false
+        // A sort drops the pages, and a Refresh follows before any page has landed under it.
+        var resorted = model.query
+        resorted.sort = GridSort(column: 0, ascending: false)
+        model.apply(resorted)
+        model.refresh()
+        try await settle("marker") { source.markerCalls == 4 }
+        try await settle("idle") { !model.isLoading }
+        _ = model.value(row: 0, column: 0)
+        try await settle("page") { model.cachedPages == [0] && !model.isLoading }
+        // The copy the first look installed is two looks old: row 2 (47 here) has no copy, so it is new or changed.
+        #expect(model.mark(row: 47) == .newOrChanged)
+    }
+
     @Test func aSortWhileTheMarkerIsHeldKeepsTheCopy() async throws {
         let source = source(changed: [2])
         let model = try await opened(source)

@@ -1,3 +1,4 @@
+import Foundation
 import MetalUI
 import SiftCore
 
@@ -7,7 +8,8 @@ struct GridStatusBar: Component, Equatable {
     @MainActor static var bodyCount = 0
 
     let grid: GridModel
-    nonisolated static func == (l: Self, r: Self) -> Bool { l.grid === r.grid }
+    var timeZone: TimeZone = .current
+    nonisolated static func == (l: Self, r: Self) -> Bool { l.grid === r.grid && l.timeZone == r.timeZone }
 
     var content: some ElementGroup {
         let _ = Self.countBody()
@@ -27,6 +29,7 @@ struct GridStatusBar: Component, Equatable {
                         .accessibilityIdentifier("grid.status.countExactly")
                 }
             }
+            ChangesBar(grid: grid, timeZone: timeZone).equatable()
             if grid.isLoading {
                 Text("loading\u{2026}").font(size: 12).foregroundColor(.secondary)
                     .accessibilityIdentifier("grid.status.loading")
@@ -65,7 +68,8 @@ struct GridStatusBar: Component, Equatable {
 
     /// A search over a relation of more than a million rows reads every one of them.
     static func isFullScan(_ grid: GridModel) -> Bool {
-        !(grid.query.search ?? "").isEmpty && grid.count.value > PGScan.fullScanRows
+        let narrowed = !(grid.query.search ?? "").isEmpty || grid.query.changes?.only == true
+        return narrowed && grid.count.value > PGScan.fullScanRows
     }
 }
 

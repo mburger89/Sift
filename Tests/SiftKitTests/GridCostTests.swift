@@ -109,4 +109,63 @@ struct GridCostTests {
         #expect(work.tableRowsRealized == 0, "the table realised \(work.tableRowsRealized) rows for a sibling's redraw")
         #expect(GridTable.bodyCount == tableBodies, "the table body ran again")
     }
+
+    /// A grid whose source flags changes, in a window with a refresh already landed (rows 2 and 7 highlighted).
+    func highlighted(trueCount: Int = 400) async throws -> (Rig, TestWindow, GridModel, FakeGridSource) {
+        let source = FakeGridSource(columns: GridViewTests.columns(), trueCount: trueCount)
+        source.supportsChanges = true
+        source.keyColumns = [0]
+        source.setChanged([2, 7])
+        let (rig, window, model) = try await view.openLoaded(source, recordsLayout: false)
+        source.setValue(.text("new"), row: 2, column: 1)
+        model.refresh()
+        do { try await window.runUntil { model.mark(row: 2) != nil && !model.isLoading && model.cachedPages.contains(0) } }
+        catch { print("DBG", model.mark(row: 2) as Any, model.isLoading, model.cachedPages, source.calls, model.query); throw error }
+        try await window.runUntilIdle()
+        return (rig, window, model, source)
+    }
+
+    @Test func anIdleGridWithAHighlightAsksNoFrames() async throws {
+        let (_, window, model, _) = try await highlighted()
+        // Not vacuous: the tint is there, on screen, and nothing is pending.
+        #expect(model.mark(row: 2) == .changed(cells: [1]))
+        #expect(try view.cell(window, 2, 1).value == "changed")
+        #expect(!model.isLoading)
+        window.resetFrameWork()
+        try await window.runUntilIdle()
+        for _ in 0..<50 { await Task.yield() }
+        try await window.runUntilIdle()
+        #expect(window.frameWork.isEmpty, "an idle highlighted grid drew \(window.frameWork.count) frames")
+    }
+
+    @Test func aScrollStepAsksTheFillOncePerRealisedCell() async throws {
+        let (_, window, model, _) = try await highlighted()
+        let table = try window.element(identifier: "grid.table")
+        window.resetFrameWork()
+        model.resetFillReads()
+        window.scroll(at: window.centre(of: table), byDeltaX: 0, deltaY: -240)
+        try await window.runUntilIdle()
+        let work = total(window)
+        // Not vacuous: cells were realised and the fill was asked.
+        #expect(work.tableCellsRealized > 0, "cells \(work.tableCellsRealized)")
+        #expect(model.fillReads > 0)
+        #expect(model.fillReads <= work.tableCellsRealized,
+                "fill asked \(model.fillReads) times for \(work.tableCellsRealized) realised cells")
+    }
+
+    @Test func aRefreshRebuildsOnlyTheGridsParts() async throws {
+        let (_, window, model, source) = try await highlighted()
+        let rows = SidebarRow.bodyCount, header = RelationHeader.bodyCount
+        let tableBodies = GridTable.bodyCount, bars = ChangesBar.bodyCount
+        window.resetFrameWork()
+        try window.click(window.element(identifier: "grid.refresh"))
+        try await window.runUntil { source.markerCalls == 3 && !model.isLoading && model.cachedPages.contains(0) }
+        try await window.runUntilIdle()
+        // Not vacuous: the refresh landed, and the table and the changes bar rebuilt for it.
+        #expect(source.markerCalls == 3)
+        #expect(GridTable.bodyCount > tableBodies, "the table did not rebuild")
+        #expect(ChangesBar.bodyCount > bars, "the changes bar did not rebuild")
+        #expect(SidebarRow.bodyCount == rows, "the sidebar rebuilt")
+        #expect(RelationHeader.bodyCount == header, "the relation header rebuilt")
+    }
 }

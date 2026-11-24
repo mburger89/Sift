@@ -7,10 +7,12 @@ import SiftCore
 struct GridView: Component {
     let session: DatabaseSession
     let relation: RelationInfo
+    /// The zone times are shown in: the cells' timestamps and the "Changes since" time.
+    var timeZone: TimeZone = .current
 
     var content: some ElementGroup {
         if let grid = session.grid(for: relation.id) {
-            GridContent(grid: grid).equatable()
+            GridContent(grid: grid, timeZone: timeZone).equatable()
         } else {
             Text(Self.unavailable(session.state)).foregroundColor(.secondary)
                 .padding(Edges(all: Pixels(16)))
@@ -26,14 +28,15 @@ struct GridView: Component {
 /// The parts of the grid, each its own component so a page arriving rebuilds the table and nothing around it.
 struct GridContent: Component, Equatable {
     let grid: GridModel
-    nonisolated static func == (l: Self, r: Self) -> Bool { l.grid === r.grid }
+    var timeZone: TimeZone = .current
+    nonisolated static func == (l: Self, r: Self) -> Bool { l.grid === r.grid && l.timeZone == r.timeZone }
 
     var content: some ElementGroup {
         VStack(alignment: .leading, spacing: 0) {
             GridToolbar(grid: grid).equatable()
             Divider()
             HStack(spacing: 0) {
-                GridTable(grid: grid).equatable()
+                GridTable(grid: grid, timeZone: timeZone).equatable()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 Divider()
                 ValueInspector(grid: grid).equatable()
@@ -41,7 +44,7 @@ struct GridContent: Component, Equatable {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             Divider()
-            GridStatusBar(grid: grid).equatable()
+            GridStatusBar(grid: grid, timeZone: timeZone).equatable()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .accessibilityElement(children: .contain)
@@ -104,6 +107,7 @@ struct GridTable: Component, Equatable {
         .tableFrozenColumns(1)
         .tableRowIndex { $0 }
         .tableActiveCell(Self.activeCell(grid))
+        .tableCellBackground { cell in Self.fill(grid, cell) }
         .copyable(Self.copied(grid))
         .accessibilityIdentifier("grid.table")
     }
@@ -111,8 +115,29 @@ struct GridTable: Component, Equatable {
     @MainActor
     static func cell(_ grid: GridModel, _ columns: [ResultColumn], _ row: GridRowRef, _ c: Int, _ timeZone: TimeZone) -> GridCell {
         let id = "grid.cell.\(row.ordinal).\(c)"
-        guard let value = grid.value(row: row.ordinal, column: c) else { return GridCell(text: nil, id: id) }
-        return GridCell(text: CellFormat.format(value, column: columns[c], timeZone: timeZone), id: id)
+        let mark = Self.cellMark(grid.mark(row: row.ordinal), column: c)
+        guard let value = grid.value(row: row.ordinal, column: c) else { return GridCell(text: nil, id: id, mark: mark) }
+        return GridCell(text: CellFormat.format(value, column: columns[c], timeZone: timeZone), id: id, mark: mark)
+    }
+
+    /// The accessibility mark of data column `c` under its row's mark.
+    static func cellMark(_ mark: RowMark?, column c: Int) -> CellMark? {
+        switch mark {
+        case nil: nil
+        case .newOrChanged?: .newRow
+        case .changed(let cells)?: cells.contains(c) ? .cell : .row
+        }
+    }
+
+    /// The tint of a table cell (`tableCellBackground`). `cell.column` counts the frozen "#" column, so data column `c`
+    /// is `cell.column - 1`. It reads only `GridModel.mark(row:)`, never observed state, and draws no animation: a
+    /// fade would redraw every realised cell every frame.
+    @MainActor
+    static func fill(_ grid: GridModel, _ cell: TableCell<Int>) -> Color? {
+        grid.noteFillRead()
+        guard let mark = grid.mark(row: cell.row) else { return nil }
+        if case .changed(let cells) = mark, cells.contains(cell.column - 1) { return Color(ChangeCellFill.self) }
+        return Color(ChangeRowFill.self)
     }
 
     @MainActor

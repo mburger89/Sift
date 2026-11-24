@@ -63,6 +63,8 @@ struct GridToolbar: Component, Equatable {
             }
             Button("Add filter") { grid.addDraftFilter() }
                 .accessibilityIdentifier("grid.filter.add")
+            NewestControl(grid: grid).equatable()
+            RefreshButton(grid: grid).equatable()
             Spacer()
             TextField("Search", text: Binding(get: { grid.searchText }, set: { grid.searchText = $0 }))
                 .focused($searchFocused)

@@ -101,6 +101,7 @@ public final class GridModel {
         var previousMarkerTime: Date?
         var changesSince: Date?
         var keyCopy: [[SiftValue]: [SiftValue]]
+        var keyCopyServed: Bool
     }
     private struct Read {
         var epoch: Int
@@ -110,7 +111,8 @@ public final class GridModel {
     @ObservationIgnored private let clock: any SiftClock
     @ObservationIgnored private var pages: [Int: [[SiftValue]]] = [:]
     @ObservationIgnored private var marks: [Int: [RowMark?]] = [:]
-    /// Rows by key, copied from the cache when a Refresh's marker lands: what changed cells are found against.
+    /// Rows by key, copied from the cache when a Refresh is asked and installed when its marker lands: what changed
+    /// cells are found against.
     @ObservationIgnored private var keyCopy: [[SiftValue]: [SiftValue]] = [:]
     @ObservationIgnored private var retriedMarkerAfterCancel = false
     /// The copy a pending refresh took, installed with the marker state when its marker lands (so a rollback's snapshot
@@ -149,6 +151,15 @@ public final class GridModel {
 
     /// Sets the read counter back to zero. For cost tests.
     public func resetReadCount() { valueReads = 0 }
+
+    /// How many times the table asked for a cell's fill (`noteFillRead`). For cost tests.
+    @ObservationIgnored public private(set) var fillReads = 0
+
+    /// Counts one ask of the cell fill; the fill itself reads only `mark(row:)`.
+    public func noteFillRead() { fillReads += 1 }
+
+    /// Sets the fill counter back to zero. For cost tests.
+    public func resetFillReads() { fillReads = 0 }
 
     public init(
         source: any GridSource, clock: any SiftClock = SystemClock(), initialQuery: GridQuery = GridQuery(),
@@ -219,7 +230,8 @@ public final class GridModel {
         generation += 1
         if previous == nil { previous = Snapshot(
                 query: self.query, pages: pages, count: count, marks: marks, previousMarker: previousMarker,
-                previousMarkerTime: previousMarkerTime, changesSince: changesSince, keyCopy: keyCopy) }
+                previousMarkerTime: previousMarkerTime, changesSince: changesSince, keyCopy: keyCopy,
+                keyCopyServed: keyCopyServed) }
         let narrowed =
             query.filters != self.query.filters || query.search != self.query.search
             || query.changes?.only != self.query.changes?.only || (recount && query.changes?.only == true)
@@ -664,6 +676,7 @@ public final class GridModel {
             previousMarkerTime = good.previousMarkerTime
             changesSince = good.changesSince
             keyCopy = good.keyCopy
+            keyCopyServed = good.keyCopyServed
             count = good.count
             lastRead = [:]
             wanted = []
