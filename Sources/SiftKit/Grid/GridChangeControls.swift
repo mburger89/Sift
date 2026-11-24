@@ -50,8 +50,11 @@ struct RefreshButton: Component, Equatable {
 
     var content: some ElementGroup {
         let grid = grid
-        Button("Refresh") { grid.refresh() }
-            .accessibilityIdentifier("grid.refresh")
+        // Only a relation's rows can be read again: a query result is captured, and its Refresh would do nothing.
+        if grid.links != nil {
+            Button("Refresh") { grid.refresh() }
+                .accessibilityIdentifier("grid.refresh")
+        }
     }
 }
 
