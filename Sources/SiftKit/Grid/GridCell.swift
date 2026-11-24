@@ -10,9 +10,11 @@ struct GridCell: Component, Equatable {
     /// How this cell differs from the previous look, nil when it does not. Colour is never the only signal: a mark is
     /// also the cell's accessibility value.
     var mark: CellMark?
+    /// The cell belongs to an outgoing foreign key: its text draws in the link colour.
+    var isLink = false
 
     var content: some ElementGroup {
-        GridCellText(text: text, id: id, value: mark?.accessibilityValue)
+        GridCellText(text: text, id: id, value: mark?.accessibilityValue, isLink: isLink)
     }
 }
 
@@ -40,6 +42,10 @@ struct GridCellText: Component, Equatable {
     let id: String
     /// What a change mark says; nil leaves the text itself as the cell's value.
     let value: String?
+    var isLink = false
+
+    /// The text colour: the link colour in a key column, else the default.
+    private var linkColor: Color? { isLink ? Color(LinkAccent.self) : nil }
 
     /// `text` as the cell's `Text`, carrying `value` when there is one.
     private func shown(_ text: Text) -> Text {
@@ -57,18 +63,18 @@ struct GridCellText: Component, Equatable {
                 shown(Text(verbatim: text.text).font(size: 13).foregroundStyle(.tertiary))
                     .accessibilityLabel("empty").accessibilityIdentifier(id)
             case .number:
-                shown(Text(verbatim: text.text).font(size: 13)).accessibilityIdentifier(id)
+                shown(Text(verbatim: text.text).font(size: 13).foregroundColor(linkColor)).accessibilityIdentifier(id)
             case .mono:
-                shown(Text(verbatim: text.text).font(size: 12).monospaced()).accessibilityIdentifier(id)
+                shown(Text(verbatim: text.text).font(size: 12).monospaced().foregroundColor(linkColor)).accessibilityIdentifier(id)
             case .enumLabel:
-                Text(verbatim: text.text).font(size: 12)
+                Text(verbatim: text.text).font(size: 12).foregroundColor(linkColor)
                     .padding(inset(6, 1))
                     .background(.surfaceSecondary)
                     .cornerRadius(Pixels(8))
                     .accessibilityLabel(text.text).accessibilityIdentifier(id)
                     .accessibilityValue(value ?? text.text)
             case .plain:
-                shown(Text(verbatim: text.text).font(size: 13)).accessibilityIdentifier(id)
+                shown(Text(verbatim: text.text).font(size: 13).foregroundColor(linkColor)).accessibilityIdentifier(id)
             }
         } else {
             Text(verbatim: "\u{2026}").font(size: 13).foregroundStyle(.tertiary)

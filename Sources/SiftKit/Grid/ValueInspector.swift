@@ -58,9 +58,54 @@ struct InspectorBody: Component {
             ScrollView {
                 InspectorValue(grid: grid, column: column, value: value)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
+                if grid.selectedRow != nil, grid.links != nil {
+                    ValueInspectorLinks(grid: grid, row: position.row, version: grid.pagesVersion).equatable()
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+    }
+}
+
+/// The Links section: the foreign keys of the selected row, outgoing first, then "Referenced by". Each is a button that
+/// follows it; a NULL or an unloaded value disables its link and says why.
+struct ValueInspectorLinks: Component, Equatable {
+    let grid: GridModel
+    let row: Int
+    /// The page version the row's values were read under: a page landing refreshes the titles.
+    let version: Int
+    nonisolated static func == (l: Self, r: Self) -> Bool { l.grid === r.grid && l.row == r.row && l.version == r.version }
+
+    var content: some ElementGroup {
+        let grid = grid
+        let row = row
+        let links = grid.links?.links(row: row) { grid.value(row: row, column: $0) } ?? []
+        let outgoing = links.filter(\.outgoing)
+        let incoming = links.filter { !$0.outgoing }
+        if !links.isEmpty {
+            Divider()
+            Text("Links").font(size: 12).foregroundColor(.secondary).accessibilityIdentifier("inspector.links")
+            for link in outgoing { InspectorLinkButton(grid: grid, link: link).equatable() }
+            if !incoming.isEmpty {
+                Text("Referenced by").font(size: 12).foregroundColor(.secondary)
+                for link in incoming { InspectorLinkButton(grid: grid, link: link).equatable() }
+            }
+        }
+    }
+}
+
+/// One link as a button. Its own component, so a page landing rebuilds only the links whose title changed.
+struct InspectorLinkButton: Component, Equatable {
+    let grid: GridModel
+    let link: ReferenceLink
+    nonisolated static func == (l: Self, r: Self) -> Bool { l.grid === r.grid && l.link == r.link }
+
+    var content: some ElementGroup {
+        let grid = grid
+        let link = link
+        Button(link.title) { if let follow = link.follow { grid.onFollow?(follow) } }
+            .disabled(link.follow == nil)
+            .accessibilityIdentifier("inspector.link.\(link.outgoing ? "out" : "in").\(link.foreignKey.id)")
     }
 }
 

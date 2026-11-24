@@ -80,6 +80,8 @@ struct GridTable: Component, Equatable {
         let grid = grid
         let columns = grid.columns
         let timeZone = timeZone
+        let linkColumns = Self.linkColumns(grid)
+        ScrollViewReader { proxy in
         Table(grid.rows, selection: Self.selection(grid), sortOrder: Self.sortOrder(grid)) {
             TableColumn("#") { (row: GridRowRef) in
                 Text(verbatim: "\(row.ordinal + 1)").font(size: 12).foregroundColor(.secondary)
@@ -90,13 +92,13 @@ struct GridTable: Component, Equatable {
             TableColumnForEach(0..<columns.count) { c in
                 if columns[c].isSortable {
                     TableColumn(columns[c].name, sortUsing: GridColumnSort(column: c)) { (row: GridRowRef) in
-                        Self.cell(grid, columns, row, c, timeZone)
+                        Self.cell(grid, columns, row, c, timeZone, linkColumns.contains(c))
                     }
                     .width(min: Pixels(60), ideal: Pixels(160), max: Pixels(600))
                     .alignment(CellFormat.alignment(for: columns[c]) == .trailing ? .trailing : .leading)
                 } else {
                     TableColumn(columns[c].name) { (row: GridRowRef) in
-                        Self.cell(grid, columns, row, c, timeZone)
+                        Self.cell(grid, columns, row, c, timeZone, linkColumns.contains(c))
                     }
                     .width(min: Pixels(60), ideal: Pixels(160), max: Pixels(600))
                     .alignment(CellFormat.alignment(for: columns[c]) == .trailing ? .trailing : .leading)
@@ -110,14 +112,54 @@ struct GridTable: Component, Equatable {
         .tableCellBackground { cell in Self.fill(grid, cell) }
         .copyable(Self.copied(grid))
         .accessibilityIdentifier("grid.table")
+        .contextMenu(
+            forSelectionType: Int.self,
+            menu: { (rows: Set<Int>) in
+                for link in Self.menuLinks(grid, rows) {
+                    Button(link.title) { if let follow = link.follow { grid.onFollow?(follow) } }
+                        .disabled(link.follow == nil)
+                        .accessibilityIdentifier("grid.menu.link.\(link.outgoing ? "out" : "in").\(link.foreignKey.id)")
+                }
+            },
+            primaryAction: { _ in Self.followActiveCell(grid) }
+        )
+        // The grid asks to show a cell (a follow, Back): the proxy is only reachable here.
+        .onChange(of: grid.revealCount) {
+            if let p = grid.revealRequest { proxy.scrollTo(TableCell(row: p.row, column: p.column + 1), anchor: .center) }
+        }
+        }
     }
 
     @MainActor
-    static func cell(_ grid: GridModel, _ columns: [ResultColumn], _ row: GridRowRef, _ c: Int, _ timeZone: TimeZone) -> GridCell {
+    static func cell(
+        _ grid: GridModel, _ columns: [ResultColumn], _ row: GridRowRef, _ c: Int, _ timeZone: TimeZone, _ isLink: Bool = false
+    ) -> GridCell {
         let id = "grid.cell.\(row.ordinal).\(c)"
         let mark = Self.cellMark(grid.mark(row: row.ordinal), column: c)
         guard let value = grid.value(row: row.ordinal, column: c) else { return GridCell(text: nil, id: id, mark: mark) }
-        return GridCell(text: CellFormat.format(value, column: columns[c], timeZone: timeZone), id: id, mark: mark)
+        return GridCell(
+            text: CellFormat.format(value, column: columns[c], timeZone: timeZone), id: id, mark: mark, isLink: isLink)
+    }
+
+    /// The columns that draw in the link colour: those of an outgoing foreign key.
+    @MainActor
+    static func linkColumns(_ grid: GridModel) -> Set<Int> { grid.links?.outgoingColumns ?? [] }
+
+    /// The links of the row a context menu opened on: one row only. Several rows, or none, offer no items.
+    @MainActor
+    static func menuLinks(_ grid: GridModel, _ rows: Set<Int>) -> [ReferenceLink] {
+        guard rows.count == 1, let row = rows.first, let links = grid.links else { return [] }
+        return links.links(row: row) { grid.value(row: row, column: $0) }
+    }
+
+    /// Return, or a double click, on a key cell: follows the active cell's key. Anything else does nothing.
+    @MainActor
+    static func followActiveCell(_ grid: GridModel) {
+        guard let active = grid.activePosition, active.column >= 0, let links = grid.links else { return }
+        let row = active.row
+        guard let follow = links.primaryFollow(row: row, column: active.column, value: { grid.value(row: row, column: $0) })
+        else { return }
+        grid.onFollow?(follow)
     }
 
     /// The accessibility mark of data column `c` under its row's mark.

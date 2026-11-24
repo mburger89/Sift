@@ -122,15 +122,16 @@ public final class AppModel {
         switch key {
         case .saved(let id):
             guard let connection = connections.first(where: { $0.id == id }) else { return nil }
-            return DatabaseSession(
+            let session = DatabaseSession(
                 key: key, title: connection.name, connector: environment.connector, clock: environment.clock,
                 queryHistory: environment.queryHistory
             ) { _ in
                 .saved(connection, password: environment.credentials.password(for: CredentialKey(connectionID: id)))
             }
+            return wired(session, key)
         case .container(let name):
             guard let database = discovered.first(where: { $0.containerName == name }) else { return nil }
-            return DatabaseSession(
+            let session = DatabaseSession(
                 key: key, title: name, connector: environment.connector, clock: environment.clock,
                 queryHistory: environment.queryHistory
             ) { refreshing in
@@ -142,7 +143,13 @@ public final class AppModel {
                 }
                 return .discovered(fresh)
             }
+            return wired(session, key)
         }
+    }
+
+    private func wired(_ session: DatabaseSession, _ key: ConnectionKey) -> DatabaseSession {
+        session.onFollow = { [weak self] follow in self?.follow(follow, in: key) }
+        return session
     }
 
     /// The selected relation, looked up by name in the session's **current** snapshot (never by OID).
@@ -154,6 +161,32 @@ public final class AppModel {
     /// Selects a relation (a foreign key navigates here). The sidebar does not reveal the row (gap G4).
     public func select(_ relation: RelationID, in key: ConnectionKey) {
         selection = .relation(key, relation)
+    }
+
+    // MARK: Following keys
+
+    /// Opens the rows a followed key leads to: the target's grid, newest first where it has a recency key, filtered
+    /// to the referenced (or referencing) rows, with the cursor on the first of them.
+    public func follow(_ follow: GridFollow, in key: ConnectionKey) {
+        let query = GridQuery(
+            sort: sessions[key]?.snapshot?.relation(follow.target).flatMap(RecencyColumns.defaultSort(for:)),
+            filters: follow.filters)
+        navigate(
+            to: key, relation: follow.target, query: query,
+            active: GridPosition(row: 0, column: follow.targetColumn))
+    }
+
+    /// Every change of place that carries a query and a cursor goes through here (history will record it here).
+    /// The order matters: `load` clears the cursor, so the reveal comes after it.
+    func navigate(to key: ConnectionKey, relation: RelationID, query: GridQuery?, active: GridPosition?) {
+        select(relation, in: key)
+        relationTab = .rows
+        guard let grid = sessions[key]?.grid(for: relation) else { return }
+        if let query { grid.load(query) }
+        if let active {
+            grid.reveal(active)
+            grid.selectedRow = active.row
+        }
     }
 
     // MARK: The map

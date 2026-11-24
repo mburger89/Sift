@@ -57,6 +57,10 @@ public final class GridModel {
     public private(set) var changesSince: Date?
     /// The cell a `reveal(_:)` asked the table to scroll to.
     public private(set) var revealRequest: GridPosition?
+    /// Counts the reveals: the table scrolls when it changes, even for a cell it was already asked to show.
+    public private(set) var revealCount = 0
+    /// The foreign keys of this grid's relation, for following them; nil for a result that is not a relation's rows.
+    public var links: GridLinks?
     /// Newest-first sorts, one per recency candidate in candidate order; set by the session. Empty hides the toggle.
     public var recencySorts: [GridSort] = []
     public var recencyColumns: [Int] { recencySorts.map(\.column) }
@@ -142,6 +146,8 @@ public final class GridModel {
     @ObservationIgnored private var tick = 0
     /// Called when a query fails because the connection is gone: the session starts reconnecting. A grid has a
     /// connection of its own, so the session may not have noticed.
+    /// Called when the user follows a key (the inspector, the row menu, Return or a double click on a key cell).
+    @ObservationIgnored public var onFollow: (@MainActor (GridFollow) -> Void)?
     @ObservationIgnored public var onConnectionLost: (@MainActor (any Error) -> Void)?
     /// How many times `value(row:column:)` has been asked. For cost tests.
     @ObservationIgnored public private(set) var valueReads = 0
@@ -217,6 +223,12 @@ public final class GridModel {
     public func apply(_ query: GridQuery) {
         guard query != self.query else { return }
         reload(query, keepSelection: false)
+    }
+
+    /// Shows `query` and reads it again even when it equals the current one (a follow into the same filter twice).
+    /// The cursor and the selection are cleared, as `apply` clears them.
+    public func load(_ query: GridQuery) {
+        reload(query, keepSelection: false, recount: true)
     }
 
     /// Shows `query` even when it equals the current one, dropping the pages. A refresh keeps the cursor and the
@@ -333,6 +345,7 @@ public final class GridModel {
     public func reveal(_ position: GridPosition) {
         activePosition = position
         revealRequest = position
+        revealCount += 1
     }
 
     /// The values of the key columns that identify a row across looks, nil when there are none or one is out of range.

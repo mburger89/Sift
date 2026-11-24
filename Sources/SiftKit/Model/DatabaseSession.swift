@@ -51,6 +51,8 @@ public final class DatabaseSession {
     /// The grids opened on this session's source, by relation: a grid keeps its sort, filters and pages while the
     /// user looks at another tab. A new source (a reconnect) or a changed relation drops them.
     @ObservationIgnored private var grids: [RelationID: (model: GridModel, relation: RelationInfo)] = [:]
+    /// Called when a grid of this session asks to follow a key; the app model routes it.
+    @ObservationIgnored public var onFollow: (@MainActor (GridFollow) -> Void)?
     /// The SQL editor, made at the first ask and kept for the session (a reconnect keeps its text and history).
     @ObservationIgnored private var editor: QueryEditorModel?
     @ObservationIgnored private let queryHistory: (any QueryHistoryStoring)?
@@ -140,6 +142,8 @@ public final class DatabaseSession {
         if let current = source {
             model.onConnectionLost = { [weak self] error in _ = self?.noticeLoss(error, of: current) }
         }
+        model.links = snapshot.map { GridLinks(snapshot: $0, relation: id) }
+        model.onFollow = { [weak self] follow in self?.onFollow?(follow) }
         grids[id] = (model, relation)
         return model
     }
@@ -197,6 +201,8 @@ public final class DatabaseSession {
             grid.model.close()
             grids[id] = nil
         }
+        // The keys can change with no change to the relation itself (another table added a reference).
+        if let snapshot { for (id, grid) in grids { grid.model.links = GridLinks(snapshot: snapshot, relation: id) } }
         for id in rows.keys.sorted() { await loadRows(id, force: true) }
     }
 
