@@ -56,12 +56,30 @@ public struct PGRelationQuery: Sendable {
     /// The columns the select list names: every column, then `ctid::text` for a `ctid` key, kept for the keyset.
     public var selectedColumnCount: Int { relation.columns.count + (keyKind == .ctid ? 1 : 0) }
 
+    /// The marker for `ChangeFilter.since`: the next transaction id to be assigned, as the decimal text of a 32-bit xid.
+    /// `txid_current_snapshot()` assigns no id, so it works read-only and on a standby.
+    public static let markerSQL = "SELECT (txid_snapshot_xmax(txid_current_snapshot()) % 4294967296)::text"
+
+    /// Views and foreign tables have no `xmin`.
+    public var supportsChanges: Bool {
+        switch relation.kind {
+        case .table, .partitionedTable, .materializedView: return true
+        case .view, .foreignTable: return false
+        }
+    }
+
+    private static let changedExpression = "age(xmin) <= age($1::xid)"
+
     // MARK: Pages
 
     public func pageSQL(index: Int, size: Int, query: GridQuery, after: [SiftValue]?) -> (sql: String, params: [String?]) {
         var params: [String?] = []
-        var sql = "SELECT " + selectList() + " FROM " + PGIdentifier.qualified(relation.id)
-        var conditions = whereConditions(for: query, params: &params)
+        // The marker is bound first, so the flag is `$1` and every other parameter is numbered after it.
+        let changes = supportsChanges ? query.changes : nil
+        if let changes { params.append(changes.since) }
+        var sql = "SELECT " + selectList(flagged: changes != nil) + " FROM " + PGIdentifier.qualified(relation.id)
+        var conditions = changes?.only == true ? [Self.changedExpression] : []
+        conditions += whereConditions(for: query, params: &params)
 
         let order = orderTerms(for: query)
         var offset = index * size
@@ -79,17 +97,23 @@ public struct PGRelationQuery: Sendable {
     public func countSQL(query: GridQuery) -> (sql: String, params: [String?]) {
         var params: [String?] = []
         var sql = "SELECT count(*) FROM " + PGIdentifier.qualified(relation.id)
-        let conditions = whereConditions(for: query, params: &params)
+        var conditions: [String] = []
+        if supportsChanges, let changes = query.changes, changes.only {
+            params.append(changes.since)
+            conditions.append(Self.changedExpression)
+        }
+        conditions += whereConditions(for: query, params: &params)
         if !conditions.isEmpty { sql += " WHERE " + conditions.joined(separator: " AND ") }
         return (sql, params)
     }
 
     // MARK: Pieces
 
-    private func selectList() -> String {
+    private func selectList(flagged: Bool) -> String {
         var items = relation.columns.map { PGIdentifier.quote($0.name) }
         // Aliased: a bare `ORDER BY ctid` would sort by an output column of that name (text order), not by address.
         if keyKind == .ctid { items.append("ctid::text AS \"_sift_ctid\"") }
+        if flagged { items.append("\(Self.changedExpression) AS \"_sift_changed\"") }
         return items.isEmpty ? "1" : items.joined(separator: ", ")
     }
 
@@ -107,8 +131,8 @@ public struct PGRelationQuery: Sendable {
         let ascending = query.sort?.ascending ?? true
         var terms: [Term] = []
         func suffix(_ nulls: Bool) -> String {
-            guard query.sort != nil else { return "" }
-            if nulls { return ascending ? " ASC NULLS LAST" : " DESC NULLS FIRST" }
+            guard let sort = query.sort else { return "" }
+            if nulls { return (ascending ? " ASC" : " DESC") + (sort.nullsLast ? " NULLS LAST" : " NULLS FIRST") }
             return ascending ? "" : " DESC"
         }
         var used = Set<Int>()

@@ -52,6 +52,13 @@ import Testing
         #expect(try await ids(source(), GridQuery(sort: GridSort(column: 2, ascending: false))) == [3, 10, 4, 2, 1, 5])
     }
 
+    @Test func nullsLastHonouredInMemory() async throws {
+        #expect(try await ids(source(), GridQuery(sort: GridSort(column: 1, ascending: false, nullsLast: true))).last == 3)
+        #expect(try await ids(source(), GridQuery(sort: GridSort(column: 1, ascending: true, nullsLast: false))).first == 3)
+        // numeric descending with NULLs last: 100, then the 10.25 pair (key descending), 9.50, -3, NULL.
+        #expect(try await ids(source(), GridQuery(sort: GridSort(column: 2, ascending: false, nullsLast: true))) == [10, 4, 2, 1, 5, 3])
+    }
+
     @Test func aBooleanSortsFalseBeforeTrue() async throws {
         #expect(try await ids(source(), GridQuery(sort: GridSort(column: 3))) == [2, 5, 1, 4, 10, 3])
     }

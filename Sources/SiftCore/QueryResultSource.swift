@@ -75,8 +75,8 @@ public final class QueryResultSource: GridSource, @unchecked Sendable {
                 let l = rows[a][safe: column] ?? .null, r = rows[b][safe: column] ?? .null
                 switch (l, r) {
                 case (.null, .null): return sort.ascending ? a < b : a > b
-                case (.null, _): return !sort.ascending      // NULLS LAST ascending, NULLS FIRST descending
-                case (_, .null): return sort.ascending
+                case (.null, _): return !sort.nullsLast      // by default NULLS LAST ascending, NULLS FIRST descending
+                case (_, .null): return sort.nullsLast
                 default:
                     let c = type.compare(l, r)
                     if c == 0 { return sort.ascending ? a < b : a > b }
