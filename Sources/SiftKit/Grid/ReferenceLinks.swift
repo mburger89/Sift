@@ -75,13 +75,19 @@ public struct GridLinks: Sendable {
         let disabled = { (title: String) in ReferenceLink(foreignKey: key, outgoing: outgoing, follow: nil, title: title) }
 
         var texts: [String] = []
+        var nulls: [String] = []
         for name in mine {
             guard let at = columns.firstIndex(of: name) else { return disabled(base) }
             guard let cell = value(at) else { return disabled("\(base) (not loaded)") }
             if case .null = cell {
-                return disabled(outgoing ? "\(mine.joined(separator: ", ")) is NULL" : "\(base) (\(name) is NULL)")
+                nulls.append(name)
+            } else {
+                texts.append(CellFormat.rawText(cell))
             }
-            texts.append(CellFormat.rawText(cell))
+        }
+        if !nulls.isEmpty {
+            let say = "\(nulls.joined(separator: ", ")) is NULL"
+            return disabled(outgoing ? say : "\(base) (\(say))")
         }
         guard let targetColumns = snapshot.relation(target)?.columns.map(\.name) else { return disabled(base) }
         var filters: [GridFilter] = []

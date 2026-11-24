@@ -115,4 +115,25 @@ struct ReferenceLinksTests {
         #expect(links("shipments").outgoingColumns == [column("shipments", "order_id"), column("shipments", "product_id")])
         #expect(links("customers").outgoingColumns.isEmpty)
     }
+
+    @Test func aCompositeKeyNamesOnlyItsNullColumns() throws {
+        // shipments (id, order_id, product_id): only product_id is NULL.
+        let row: [SiftValue] = [.int(1), .int(5), .null]
+        let link = try #require(links("shipments").links(row: 0) { row[$0] }.first { $0.outgoing })
+        #expect(link.follow == nil)
+        #expect(link.title == "product_id is NULL")
+        let both: [SiftValue] = [.int(1), .null, .null]
+        let two = try #require(links("shipments").links(row: 0) { both[$0] }.first { $0.outgoing })
+        #expect(two.title == "product_id, order_id is NULL" || two.title == "order_id, product_id is NULL")
+    }
+
+    @Test func outgoingLinksComeFirstOnARelationWithBothDirections() throws {
+        let row: [SiftValue] = [.int(7), .int(42), .text("new"), .raw("1.00"), .int(100)]
+        for (name, values) in [("orders", row), ("employees", [.int(2), .int(1)] as [SiftValue])] {
+            let all = links(name).links(row: 0) { values[$0] }
+            let outCount = all.filter(\.outgoing).count
+            #expect(outCount > 0 && outCount < all.count, Comment(rawValue: name))
+            #expect(all.prefix(outCount).allSatisfy(\.outgoing) && all.dropFirst(outCount).allSatisfy { !$0.outgoing }, Comment(rawValue: name))
+        }
+    }
 }

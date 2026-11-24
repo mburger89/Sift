@@ -87,6 +87,27 @@ struct GridCostTests {
         #expect(SidebarRow.bodyCount == rows, "the sidebar rebuilt")
     }
 
+    @Test func aPageLandingElsewhereDoesNotRebuildTheInspectorOfALoadedCell() async throws {
+        let (_, window, model, source) = try await rig(trueCount: 100_000)
+        // An active cell with a loaded value, and the links section under it.
+        try window.click(view.cell(window, 3, 1))
+        try await window.runUntilIdle()
+        #expect(model.activePosition == GridPosition(row: 3, column: 1) && model.links != nil)
+        #expect(window.hasElement(identifier: "inspector.link.out.shop.orders.orders_customer_id_fkey"))
+        let table = try window.element(identifier: "grid.table")
+        source.holdsPages = true
+        window.scroll(at: window.centre(of: table), byDeltaX: 0, deltaY: -24 * 5000)
+        try await window.runUntil { source.pageCalls.count == 2 }
+        try await window.runUntilIdle()
+        let tableBodies = GridTable.bodyCount, inspector = ValueInspector.bodyCount, body = InspectorBody.bodyCount
+        source.releaseAll()
+        try await window.runUntil { model.cachedPages.count == 2 }
+        try await window.runUntilIdle()
+        #expect(GridTable.bodyCount > tableBodies, "the page did not land in the table")
+        #expect(ValueInspector.bodyCount == inspector, "the inspector rebuilt")
+        #expect(InspectorBody.bodyCount == body, "the inspector's body rebuilt for a page that is not its row's")
+    }
+
     @Test func aSiblingRedrawDoesNotRebuildAnUnfocusedGrid() async throws {
         let (_, window, model, _) = try await rig()
         // The search field has the caret: the toolbar redraws on every keystroke, the grid is not focused.

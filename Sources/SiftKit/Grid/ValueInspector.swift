@@ -36,10 +36,14 @@ enum InspectorLimits {
 }
 
 struct InspectorBody: Component {
+    /// How many times `content` has run, for the cost pins (debug builds only).
+    @MainActor static var bodyCount = 0
+
     let grid: GridModel
     let position: GridPosition
 
     var content: some ElementGroup {
+        let _ = Self.countBody()
         let grid = grid
         if position.column < 0 {
             Text("Row").font(size: 12).foregroundColor(.secondary)
@@ -59,7 +63,7 @@ struct InspectorBody: Component {
                 InspectorValue(grid: grid, column: column, value: value)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                 if grid.selectedRow != nil, grid.links != nil {
-                    ValueInspectorLinks(grid: grid, row: position.row, version: grid.pagesVersion).equatable()
+                    ValueInspectorLinks(grid: grid, row: position.row, version: value == nil ? grid.pagesVersion : 0).equatable()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -227,6 +231,14 @@ struct JSONMore: Component {
 
     var content: some ElementGroup {
         Text(verbatim: "\u{2026} \(count) more").font(size: 12).foregroundColor(.secondary)
+    }
+}
+
+extension InspectorBody {
+    @MainActor static func countBody() {
+        #if DEBUG
+        bodyCount += 1
+        #endif
     }
 }
 

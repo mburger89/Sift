@@ -342,6 +342,14 @@ public final class GridModel {
         if next != query { apply(next) } else { scheduleTurn() }
     }
 
+    /// A cursor on a row that does not exist (a follow into an empty result) is dropped once the count is exact. An
+    /// estimate never drops it: it is a guess, and the placeholder one is only there while a count is out.
+    private func dropCursorPastCount() {
+        guard count.isExact, let active = activePosition, active.row >= count.value else { return }
+        activePosition = nil
+        if let selected = selectedRow, selected >= count.value { selectedRow = nil }
+    }
+
     public func reveal(_ position: GridPosition) {
         activePosition = position
         revealRequest = position
@@ -555,6 +563,7 @@ public final class GridModel {
         }
         // A count that cannot be bettered than what the pages already proved is kept: never shrink an exact count.
         if !(count.isExact && !new.isExact) { count = new }
+        dropCursorPastCount()
         pagesVersion += 1
         pump()
     }
@@ -621,6 +630,7 @@ public final class GridModel {
         } else if !count.isExact, (page + 1) * size >= count.value {
             count = .estimated((page + 2) * size)
         }
+        dropCursorPastCount()
         evict()
         pagesVersion += 1
         pump()

@@ -88,7 +88,7 @@ struct FollowTests {
         let link = try o.window.element(identifier: "inspector.link.out.shop.orders.orders_customer_id_fkey")
         #expect(link.label == "customer_id → customers (id = 42)")
         #expect(link.isEnabled)
-        // Referenced by: order_items and nothing else for orders... the incoming list follows.
+        // "Referenced by" lists the keys that point at orders, here order_items.
         #expect(o.window.hasElement(identifier: "inspector.link.in.shop.order_items.order_items_order_id_fkey"))
         try o.window.click(link)
         let target = try await landed(o)
@@ -176,8 +176,12 @@ struct FollowTests {
         #expect(GridTable.linkColumns(o.grid) == [1])
         let columns = o.grid.columns
         let row = GridRowRef(ordinal: 0)
-        #expect(GridTable.cell(o.grid, columns, row, 1, .current, true).isLink)
-        #expect(GridTable.cell(o.grid, columns, row, 1, .current, true) != GridTable.cell(o.grid, columns, row, 1, .current, false))
+        // The wiring: the set GridTable builds from the links decides each cell.
+        let tinted = GridTable.linkColumns(o.grid)
+        #expect(GridTable.cell(o.grid, columns, row, 1, .current, tinted).isLink)
+        #expect(!GridTable.cell(o.grid, columns, row, 0, .current, tinted).isLink)
+        #expect(!GridTable.cell(o.grid, columns, row, 2, .current, tinted).isLink)
+        #expect(GridTable.cell(o.grid, columns, row, 1, .current, tinted) != GridTable.cell(o.grid, columns, row, 1, .current, []))
         // Query results have no links, so no column is tinted.
         let plain = GridModel(source: FakeGridSource(columns: columns, trueCount: 1), clock: ManualClock())
         #expect(GridTable.linkColumns(plain).isEmpty)
@@ -208,5 +212,76 @@ struct FollowTests {
         #expect(target.revealCount == reveals + 1)
         #expect(target.activePosition == GridPosition(row: 0, column: 0))
         #expect(target.selectedRow == 0)
+    }
+
+    @Test func followingIntoAnEmptyResultDropsTheCursor() async throws {
+        let o = try await open()
+        let items = RelationID("shop", "order_items")
+        let empty = FakeGridSource(
+            columns: [
+                ResultColumn(name: "order_id", typeOID: 20, typeName: "int8"),
+                ResultColumn(name: "product_id", typeOID: 2950, typeName: "uuid"),
+                ResultColumn(name: "qty", typeOID: 23, typeName: "int4"),
+            ], trueCount: 0)
+        o.rig.sources[0].setGrid(empty, for: items)
+        try o.window.click(cell(o.window, 0, 0))
+        try await o.window.runUntilIdle()
+        try o.window.click(o.window.element(identifier: "inspector.link.in.shop.order_items.order_items_order_id_fkey"))
+        try await o.window.runUntil { o.rig.model.selection == .relation(key, items) }
+        let target = try #require(o.rig.model.sessions[key]?.grid(for: items))
+        try await o.window.runUntil { target.count == .exact(0) }
+        try await o.window.runUntilIdle()
+        #expect(target.activePosition == nil && target.selectedRow == nil)
+        #expect(o.window.hasElement(identifier: "inspector.empty"))
+        #expect(!o.window.hasElement(identifier: "inspector.value"))
+    }
+
+    // MARK: Reveal across grids
+
+    /// Orders with 1000 generated rows and customers beside it.
+    func openBig() async throws -> Opened {
+        let rig = Rig()
+        let big = FakeGridSource(columns: GridViewTests.columns(), trueCount: 1000)
+        let customerSource = FakeGridSource(columns: Self.customerColumns(), trueCount: 3)
+        rig.sources[0].setGrid(big, for: orders)
+        rig.sources[0].setGrid(customerSource, for: customers)
+        await rig.model.refreshDiscovery()
+        await rig.model.open(key)
+        let grid = try #require(rig.model.sessions[key]?.grid(for: orders))
+        grid.apply(GridQuery())
+        let window = try siftWindow(model: rig.model)
+        rig.model.select(orders, in: key)
+        try await window.runUntilIdle()
+        try await window.runUntil { grid.count == .exact(1000) && grid.cachedPages.contains(0) }
+        try await window.runUntilIdle()
+        return Opened(rig: rig, window: window, grid: grid, customerSource: customerSource)
+    }
+
+    @Test func aRevealOfAnotherGridWithTheSameCountStillScrolls() async throws {
+        let o = try await openBig()
+        // customers' first reveal makes its count 1; orders' first reveal then makes its count 1 too.
+        o.rig.model.navigate(to: key, relation: customers, query: GridQuery(), active: GridPosition(row: 0, column: 0))
+        try await o.window.runUntil { o.rig.model.selection == .relation(key, customers) }
+        try await o.window.runUntilIdle()
+        let other = try #require(o.rig.model.sessions[key]?.grid(for: customers))
+        #expect(other.revealCount == 1 && o.grid.revealCount == 0)
+        o.rig.model.navigate(to: key, relation: orders, query: nil, active: GridPosition(row: 300, column: 0))
+        #expect(o.grid.revealCount == 1)
+        try await o.window.runUntil { o.window.hasElement(identifier: "grid.cell.300.0") }
+        try await o.window.runUntilIdle()
+        let frame = try cell(o.window, 300, 0).visibleFrame
+        #expect(frame.size.height.value > 0, "row 300 is on screen")
+    }
+
+    @Test func aTableMountedFreshStillRevealsItsCell() async throws {
+        let o = try await openBig()
+        // The Structure tab unmounts the table; coming back mounts a new one.
+        o.rig.model.relationTab = .structure
+        try await o.window.runUntilIdle()
+        #expect(!o.window.hasElement(identifier: "grid.table"))
+        o.rig.model.navigate(to: key, relation: orders, query: nil, active: GridPosition(row: 300, column: 0))
+        try await o.window.runUntil { o.window.hasElement(identifier: "grid.cell.300.0") }
+        try await o.window.runUntilIdle()
+        #expect(try cell(o.window, 300, 0).visibleFrame.size.height.value > 0)
     }
 }

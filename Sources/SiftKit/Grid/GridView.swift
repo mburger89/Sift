@@ -61,6 +61,12 @@ struct GridColumnSort: SortComparator, Hashable {
     func compare(_ lhs: GridRowRef, _ rhs: GridRowRef) -> ComparisonResult { .orderedSame }
 }
 
+/// Which reveal of which grid the table last saw.
+struct RevealToken: Hashable {
+    let grid: ObjectIdentifier
+    let count: Int
+}
+
 /// The table: a frozen row-number column, then one column per source column, over `GridModel.rows`.
 ///
 /// The first declared column is "#", so a data column's cell-mode coordinate is its index plus one.
@@ -92,13 +98,13 @@ struct GridTable: Component, Equatable {
             TableColumnForEach(0..<columns.count) { c in
                 if columns[c].isSortable {
                     TableColumn(columns[c].name, sortUsing: GridColumnSort(column: c)) { (row: GridRowRef) in
-                        Self.cell(grid, columns, row, c, timeZone, linkColumns.contains(c))
+                        Self.cell(grid, columns, row, c, timeZone, linkColumns)
                     }
                     .width(min: Pixels(60), ideal: Pixels(160), max: Pixels(600))
                     .alignment(CellFormat.alignment(for: columns[c]) == .trailing ? .trailing : .leading)
                 } else {
                     TableColumn(columns[c].name) { (row: GridRowRef) in
-                        Self.cell(grid, columns, row, c, timeZone, linkColumns.contains(c))
+                        Self.cell(grid, columns, row, c, timeZone, linkColumns)
                     }
                     .width(min: Pixels(60), ideal: Pixels(160), max: Pixels(600))
                     .alignment(CellFormat.alignment(for: columns[c]) == .trailing ? .trailing : .leading)
@@ -124,21 +130,24 @@ struct GridTable: Component, Equatable {
             primaryAction: { _ in Self.followActiveCell(grid) }
         )
         // The grid asks to show a cell (a follow, Back): the proxy is only reachable here.
-        .onChange(of: grid.revealCount) {
-            if let p = grid.revealRequest { proxy.scrollTo(TableCell(row: p.row, column: p.column + 1), anchor: .center) }
+        // The token names the grid as well as the count: this table sits in one place for every relation, and a
+        // count alone is equal across two grids. `initial` covers a table that was just mounted (Structure and back).
+        .onChange(of: RevealToken(grid: ObjectIdentifier(grid), count: grid.revealCount), initial: true) {
+            guard let p = grid.revealRequest, grid.activePosition == p else { return }
+            proxy.scrollTo(TableCell(row: p.row, column: p.column + 1), anchor: .center)
         }
         }
     }
 
     @MainActor
     static func cell(
-        _ grid: GridModel, _ columns: [ResultColumn], _ row: GridRowRef, _ c: Int, _ timeZone: TimeZone, _ isLink: Bool = false
+        _ grid: GridModel, _ columns: [ResultColumn], _ row: GridRowRef, _ c: Int, _ timeZone: TimeZone, _ linkColumns: Set<Int> = []
     ) -> GridCell {
         let id = "grid.cell.\(row.ordinal).\(c)"
         let mark = Self.cellMark(grid.mark(row: row.ordinal), column: c)
         guard let value = grid.value(row: row.ordinal, column: c) else { return GridCell(text: nil, id: id, mark: mark) }
         return GridCell(
-            text: CellFormat.format(value, column: columns[c], timeZone: timeZone), id: id, mark: mark, isLink: isLink)
+            text: CellFormat.format(value, column: columns[c], timeZone: timeZone), id: id, mark: mark, isLink: linkColumns.contains(c))
     }
 
     /// The columns that draw in the link colour: those of an outgoing foreign key.

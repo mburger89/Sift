@@ -19,8 +19,6 @@ import Testing
         var label: String
         var table: String
         var constraint: String
-        /// A value long and odd enough that finding it in SQL text would mean it was spliced in.
-        var distinctive: Bool = true
     }
 
     static func extraDDL(_ a: String) -> [String] {
