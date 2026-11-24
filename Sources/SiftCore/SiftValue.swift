@@ -1,5 +1,5 @@
 /// A decoded database value.
-public enum SiftValue: Sendable, Equatable {
+public enum SiftValue: Sendable, Hashable {
     case null
     case bool(Bool)
     case int(Int64)

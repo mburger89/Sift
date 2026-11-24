@@ -97,6 +97,10 @@ public final class GridModel {
         var pages: [Int: [[SiftValue]]]
         var count: RowCount
         var marks: [Int: [RowMark?]]
+        var previousMarker: String?
+        var previousMarkerTime: Date?
+        var changesSince: Date?
+        var keyCopy: [[SiftValue]: [SiftValue]]
     }
     private struct Read {
         var epoch: Int
@@ -107,7 +111,8 @@ public final class GridModel {
     @ObservationIgnored private var pages: [Int: [[SiftValue]]] = [:]
     @ObservationIgnored private var marks: [Int: [RowMark?]] = [:]
     /// Rows by key, copied from the cache when a Refresh's marker lands: what changed cells are found against.
-    @ObservationIgnored private var keyCopy: [String: [SiftValue]] = [:]
+    @ObservationIgnored private var keyCopy: [[SiftValue]: [SiftValue]] = [:]
+    @ObservationIgnored private var retriedMarkerAfterCancel = false
     @ObservationIgnored private var markerNeeded: Bool
     /// The marker taken when the grid opened and its look has not landed: a refresh's marker also serves as it.
     @ObservationIgnored private var openMarkerPending: Bool
@@ -206,7 +211,9 @@ public final class GridModel {
             inFlight = nil
         }
         generation += 1
-        if previous == nil { previous = Snapshot(query: self.query, pages: pages, count: count, marks: marks) }
+        if previous == nil { previous = Snapshot(
+                query: self.query, pages: pages, count: count, marks: marks, previousMarker: previousMarker,
+                previousMarkerTime: previousMarkerTime, changesSince: changesSince, keyCopy: keyCopy) }
         let narrowed =
             query.filters != self.query.filters || query.search != self.query.search
             || query.changes?.only != self.query.changes?.only || (recount && query.changes?.only == true)
@@ -265,6 +272,9 @@ public final class GridModel {
         }
         pendingRefresh = true
         markerNeeded = true
+        // The copy is the last look's rows: taken now, while the pages are still those (a sort while the marker is
+        // out drops them). A second refresh copies again, unless nothing is cached to copy.
+        copyKeys()
         if inFlight != nil {
             source.cancelCurrent()
             inFlight = nil
@@ -305,11 +315,20 @@ public final class GridModel {
         revealRequest = position
     }
 
-    /// A string that identifies a row by the values of the key columns, nil when any is out of range.
-    private func key(of row: [SiftValue]) -> String? {
-        let keys = source.keyColumns
+    /// The values of the key columns that identify a row across looks, nil when there are none or one is out of range.
+    private func key(of row: [SiftValue], _ keys: [Int]) -> [SiftValue]? {
         guard !keys.isEmpty, keys.allSatisfy({ row.indices.contains($0) }) else { return nil }
-        return keys.map { String(describing: row[$0]) }.joined(separator: "\u{1F}")
+        return keys.map { row[$0] }
+    }
+
+    private func copyKeys() {
+        let keys = source.keyColumns
+        guard !keys.isEmpty, !pages.isEmpty else { return }
+        var copy: [[SiftValue]: [SiftValue]] = [:]
+        for rows in pages.values {
+            for row in rows { if let k = key(of: row, keys) { copy[k] = row } }
+        }
+        keyCopy = copy
     }
 
     // MARK: The toolbar's actions
@@ -506,27 +525,27 @@ public final class GridModel {
         let taken = now()
         markerNeeded = false
         openMarkerPending = false
+        retriedMarkerAfterCancel = false
         let earlier = previousMarker
         let earlierTime = previousMarkerTime
-        previousMarker = marker
-        previousMarkerTime = taken
-        guard pendingRefresh else { return pump() }
-        pendingRefresh = false
-        keyCopy = [:]
-        if earlier != nil {
-            for rows in pages.values {
-                for row in rows { if let k = key(of: row) { keyCopy[k] = row } }
-            }
+        guard pendingRefresh else {
+            previousMarker = marker
+            previousMarkerTime = taken
+            return pump()
         }
+        pendingRefresh = false
         var next = query
         if let earlier {
             next.changes = ChangeFilter(since: earlier, only: query.changes?.only ?? false)
-            changesSince = earlierTime
         } else {
             next.changes = nil
-            changesSince = nil
+            keyCopy = [:]
         }
+        // The reload snapshots the state a rollback goes back to: the marker state is advanced after it.
         reload(next, keepSelection: true, recount: true)
+        changesSince = earlier == nil ? nil : earlierTime
+        previousMarker = marker
+        previousMarkerTime = taken
     }
 
     private func pageArrived(_ page: Int, _ landed: [[SiftValue]], generation mine: Int, serial mineSerial: Int) {
@@ -536,13 +555,15 @@ public final class GridModel {
         var pageMarks: [RowMark?] = []
         if query.changes != nil, source.supportsChanges {
             pageMarks.reserveCapacity(rows.count)
+            let keys = source.keyColumns
             for index in rows.indices {
+                // A row has the flag only when it is wider than the columns (a `ctid` may follow them, the flag is last).
                 var flagged = false
-                if case .bool(let flag)? = rows[index].last {
+                if rows[index].count > columns.count, case .bool(let flag)? = rows[index].last {
                     flagged = flag
                     rows[index].removeLast()
                 }
-                pageMarks.append(flagged ? markFor(rows[index]) : nil)
+                pageMarks.append(flagged ? markFor(rows[index], keys) : nil)
             }
         }
         pages[page] = rows
@@ -560,8 +581,8 @@ public final class GridModel {
     }
 
     /// The mark of a flagged row: the cells that differ from the copy of the same key, or a row mark without one.
-    private func markFor(_ row: [SiftValue]) -> RowMark {
-        guard let k = key(of: row), let old = keyCopy[k] else { return .newOrChanged }
+    private func markFor(_ row: [SiftValue], _ keys: [Int]) -> RowMark {
+        guard let k = key(of: row, keys), let old = keyCopy[k] else { return .newOrChanged }
         var cells = Set<Int>()
         for c in 0..<columns.count where old.indices.contains(c) && row.indices.contains(c) {
             diffComparisons += 1
@@ -582,6 +603,12 @@ public final class GridModel {
             }
         }
         if case .marker = work {
+            if let cancelled = error as? SourceError, cancelled.kind == .cancelled, !retriedMarkerAfterCancel {
+                // A stray cancel signal: ask once more before the marker counts as failed.
+                retriedMarkerAfterCancel = true
+                return pump()
+            }
+            retriedMarkerAfterCancel = false
             // A marker that fails never blocks reading. On open there is no previous marker; on a refresh the old one
             // is kept (so the next refresh still covers everything since it) and the rows are read plain.
             markerNeeded = false
@@ -611,6 +638,10 @@ public final class GridModel {
             query = good.query
             pages = good.pages
             marks = good.marks
+            previousMarker = good.previousMarker
+            previousMarkerTime = good.previousMarkerTime
+            changesSince = good.changesSince
+            keyCopy = good.keyCopy
             count = good.count
             lastRead = [:]
             wanted = []

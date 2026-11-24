@@ -65,11 +65,18 @@ struct GridChangesTests {
         #expect(model.changesSince != nil)
         try await refreshed(model, source, markers: 3)
         #expect(model.query.changes == ChangeFilter(since: "20"))
-        // Every look reads its pages after its marker.
-        var markerSeen = false
-        for call in source.calls {
-            if case .marker = call { markerSeen = true }
-            if case .page = call { #expect(markerSeen) }
+        // Every look reads after its own marker: a read under `since` M1 comes after the marker that is taken at that
+        // refresh (the second for "10", the third for "20"), never before it.
+        let markerIndexes = source.calls.indices.filter { source.calls[$0] == .marker }
+        #expect(markerIndexes.count == 3)
+        for (at, call) in source.calls.enumerated() {
+            switch call {
+            case .page(_, _, let query, _), .count(let query):
+                if query.changes?.since == "10" { #expect(at > markerIndexes[1], "since 10 read before marker 2: \(source.calls)") }
+                if query.changes?.since == "20" { #expect(at > markerIndexes[2], "since 20 read before marker 3: \(source.calls)") }
+                if query.changes == nil { #expect(at > markerIndexes[0] && at < markerIndexes[1]) }
+            default: break
+            }
         }
         let last = try #require(source.pageCalls.last)
         #expect(last.query.changes?.since == "20")
@@ -207,10 +214,12 @@ struct GridChangesTests {
         let source = FakeGridSource(trueCount: 50)
         let model = try await opened(source)
         let before = source.pageCalls.count
+        let countsBefore = source.calls.filter { if case .count = $0 { true } else { false } }.count
         model.refresh()
         try await settle("reread") { source.pageCalls.count == before + 1 || (model.isLoading == false && model.cachedPages.isEmpty) }
         _ = model.value(row: 0, column: 0)
         try await settle("page") { source.pageCalls.count == before + 1 && model.cachedPages == [0] }
+        try await settle("counted") { source.calls.filter { if case .count = $0 { true } else { false } }.count == countsBefore + 1 }
         #expect(source.markerCalls == 0)
         #expect(model.query.changes == nil)
         #expect(model.changesSince == nil)
@@ -305,5 +314,111 @@ struct GridChangesTests {
         #expect(model.mark(row: 10) == .changed(cells: [2]))
         let spent = model.diffComparisons - before
         #expect(spent > 0 && spent <= 500 * model.columns.count, "\(spent)")
+    }
+
+    @Test func aHeldMarkerHoldsBackEveryReadOfTheLook() async throws {
+        let source = source(changed: [2])
+        let model = try await opened(source)
+        source.holdsMarkers = true
+        model.refresh()
+        try await settle("marker") { source.markerCalls == 2 }
+        _ = model.value(row: 600, column: 0)
+        for _ in 0..<100 { await Task.yield() }
+        #expect(source.calls.last == .marker, "a read started before the marker landed: \(source.calls)")
+        source.releaseAll()
+        try await settle("look") { model.query.changes != nil && !model.isLoading }
+    }
+
+    @Test func aServerErrorAfterARefreshRestoresTheMarkerState() async throws {
+        let source = source(changed: [2])
+        source.setMarkers(["10", "20", "30", "40"])
+        let model = try await opened(source)
+        try await refreshed(model, source, markers: 2)
+        #expect(model.query.changes?.since == "10")
+        let shownSince = model.changesSince
+        // The second refresh's re-read is refused by the server.
+        source.holdsMarkers = true
+        model.refresh()
+        try await settle("marker") { source.markerCalls == 3 }
+        source.failNext([SourceError(.server(sqlState: "XX000"), "refused")])
+        source.releaseAll()
+        try await settle("rolled back") { model.error != nil }
+        try await settle("idle") { !model.isLoading }
+        #expect(model.query.changes?.since == "10")
+        #expect(model.changesSince == shownSince)
+        // The marker "30" was dropped with the rollback: the next refresh still starts at "20".
+        try await refreshed(model, source, markers: 4)
+        #expect(model.query.changes?.since == "20")
+    }
+
+    @Test func aSortWhileTheMarkerIsHeldKeepsTheCopy() async throws {
+        let source = source(changed: [2])
+        let model = try await opened(source)
+        source.setValue(.text("new"), row: 2, column: 1)
+        source.holdsMarkers = true
+        model.refresh()
+        try await settle("marker") { source.markerCalls == 2 }
+        var next = model.query
+        next.sort = GridSort(column: 0, ascending: false)
+        model.apply(next)
+        source.releaseAll()
+        try await settle("look") { model.query.changes != nil && !model.isLoading }
+        _ = model.value(row: 0, column: 0)
+        try await settle("page") { model.cachedPages == [0] && !model.isLoading }
+        // Sorted descending over 50 rows: ordinal 2 is row 47.
+        #expect(model.mark(row: 47) == .changed(cells: [1]))
+    }
+
+    @Test func aPageHeldFromBeforeARefreshNeverLands() async throws {
+        let source = source(changed: [2])
+        let model = GridModel(source: source)
+        try await settle("count") { model.count != .estimated(0) && !model.isLoading }
+        source.holdsPages = true
+        _ = model.value(row: 0, column: 0)
+        try await settle("page call") { source.pageCalls.count == 1 }
+        model.refresh()
+        source.releaseAll()
+        try await settle("look") { source.markerCalls == 2 && !model.isLoading }
+        for _ in 0..<50 { await Task.yield() }
+        #expect(source.pageCalls.count == 1 || model.cachedPages.isEmpty)
+        #expect(model.cachedPages.isEmpty || model.query.changes != nil)
+        #expect(model.mark(row: 2) == nil || model.query.changes != nil)
+    }
+
+    @Test func clearDoesNotAdoptTheDroppedMarker() async throws {
+        let source = source(changed: [2])
+        source.setMarkers(["10", "20", "30"])
+        let model = try await opened(source)
+        source.holdsMarkers = true
+        model.refresh()
+        try await settle("marker") { source.markerCalls == 2 }
+        model.clearChanges()
+        source.releaseAll()
+        for _ in 0..<50 { await Task.yield() }
+        try await settle("idle") { !model.isLoading }
+        // "20" was answered after the clear and dropped; the look the next refresh compares with is still "10".
+        try await refreshed(model, source, markers: 3)
+        #expect(model.query.changes?.since == "10")
+    }
+
+    @Test func anIdleRefreshWithAnEqualMarkerStillReReads() async throws {
+        let source = source(changed: [2])
+        source.setMarkers(["10", "10", "10"])
+        let model = try await opened(source)
+        let pagesBefore = source.pageCalls.count
+        try await refreshed(model, source, markers: 2)
+        #expect(source.pageCalls.count == pagesBefore + 1)
+        try await refreshed(model, source, markers: 3)
+        #expect(source.pageCalls.count == pagesBefore + 2)
+        #expect(model.query.changes?.since == "10")
+    }
+
+    @Test func aMarkerCancelledByAStrayCancelIsAskedAgain() async throws {
+        let source = source(changed: [2])
+        source.failNext([SourceError(.cancelled, "cancelled")])
+        let model = GridModel(source: source)
+        _ = model.value(row: 0, column: 0)
+        try await settle("page") { model.cachedPages == [0] }
+        #expect(source.markerCalls == 2)
     }
 }
