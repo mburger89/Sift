@@ -113,6 +113,11 @@ public final class GridModel {
     /// Rows by key, copied from the cache when a Refresh's marker lands: what changed cells are found against.
     @ObservationIgnored private var keyCopy: [[SiftValue]: [SiftValue]] = [:]
     @ObservationIgnored private var retriedMarkerAfterCancel = false
+    /// The copy a pending refresh took, installed with the marker state when its marker lands (so a rollback's snapshot
+    /// still holds the copy of the look it goes back to).
+    @ObservationIgnored private var pendingKeyCopy: [[SiftValue]: [SiftValue]]?
+    /// True once a page has landed under a look the installed copy is older than: a refresh must not keep it.
+    @ObservationIgnored private var keyCopyServed = false
     @ObservationIgnored private var markerNeeded: Bool
     /// The marker taken when the grid opened and its look has not landed: a refresh's marker also serves as it.
     @ObservationIgnored private var openMarkerPending: Bool
@@ -206,6 +211,7 @@ public final class GridModel {
     /// Shows `query` even when it equals the current one, dropping the pages. A refresh keeps the cursor and the
     /// selection (`keepSelection`) and asks for the count again (`recount`).
     private func reload(_ query: GridQuery, keepSelection: Bool, recount: Bool = false) {
+        retriedMarkerAfterCancel = false
         if inFlight != nil {
             source.cancelCurrent()
             inFlight = nil
@@ -274,6 +280,7 @@ public final class GridModel {
         markerNeeded = true
         // The copy is the last look's rows: taken now, while the pages are still those (a sort while the marker is
         // out drops them). A second refresh copies again, unless nothing is cached to copy.
+        retriedMarkerAfterCancel = false
         copyKeys()
         if inFlight != nil {
             source.cancelCurrent()
@@ -299,6 +306,7 @@ public final class GridModel {
         pendingRefresh = false
         markerNeeded = openMarkerPending
         keyCopy = [:]
+        pendingKeyCopy = nil
         changesSince = nil
         if wasPending, !markerNeeded, inFlight?.work == .marker {
             source.cancelCurrent()
@@ -323,12 +331,18 @@ public final class GridModel {
 
     private func copyKeys() {
         let keys = source.keyColumns
-        guard !keys.isEmpty, !pages.isEmpty else { return }
+        guard !keys.isEmpty else { return }
+        guard !pages.isEmpty else {
+            // Nothing cached (a sort dropped it): keep what an earlier refresh of this one took, unless a look has landed
+            // since the installed copy, which then is one look stale.
+            pendingKeyCopy = pendingKeyCopy ?? (keyCopyServed ? [:] : keyCopy)
+            return
+        }
         var copy: [[SiftValue]: [SiftValue]] = [:]
         for rows in pages.values {
             for row in rows { if let k = key(of: row, keys) { copy[k] = row } }
         }
-        keyCopy = copy
+        pendingKeyCopy = copy
     }
 
     // MARK: The toolbar's actions
@@ -531,6 +545,9 @@ public final class GridModel {
         guard pendingRefresh else {
             previousMarker = marker
             previousMarkerTime = taken
+            // A rollback must not drop the opening marker.
+            previous?.previousMarker = marker
+            previous?.previousMarkerTime = taken
             return pump()
         }
         pendingRefresh = false
@@ -539,11 +556,14 @@ public final class GridModel {
             next.changes = ChangeFilter(since: earlier, only: query.changes?.only ?? false)
         } else {
             next.changes = nil
-            keyCopy = [:]
         }
+        let copy = earlier == nil ? [:] : (pendingKeyCopy ?? [:])
+        pendingKeyCopy = nil
         // The reload snapshots the state a rollback goes back to: the marker state is advanced after it.
         reload(next, keepSelection: true, recount: true)
         changesSince = earlier == nil ? nil : earlierTime
+        keyCopy = copy
+        keyCopyServed = false
         previousMarker = marker
         previousMarkerTime = taken
     }
@@ -552,6 +572,7 @@ public final class GridModel {
         guard finish(serial: mineSerial, generation: mine) else { return pump() }
         previous = nil
         var rows = landed
+        if query.changes != nil { keyCopyServed = true }
         var pageMarks: [RowMark?] = []
         if query.changes != nil, source.supportsChanges {
             pageMarks.reserveCapacity(rows.count)
@@ -617,6 +638,7 @@ public final class GridModel {
             if pendingRefresh {
                 pendingRefresh = false
                 keyCopy = [:]
+                pendingKeyCopy = nil
                 changesSince = nil
                 var next = query
                 next.changes = nil

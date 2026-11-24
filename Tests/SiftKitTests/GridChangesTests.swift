@@ -333,8 +333,10 @@ struct GridChangesTests {
         let source = source(changed: [2])
         source.setMarkers(["10", "20", "30", "40"])
         let model = try await opened(source)
+        source.setValue(.text("new"), row: 2, column: 1)
         try await refreshed(model, source, markers: 2)
         #expect(model.query.changes?.since == "10")
+        #expect(model.mark(row: 2) == .changed(cells: [1]))
         let shownSince = model.changesSince
         // The second refresh's re-read is refused by the server.
         source.holdsMarkers = true
@@ -346,6 +348,15 @@ struct GridChangesTests {
         try await settle("idle") { !model.isLoading }
         #expect(model.query.changes?.since == "10")
         #expect(model.changesSince == shownSince)
+        // A page that lands under the restored look still diffs against the copy of the look it goes back to.
+        var resorted = model.query
+        resorted.sort = GridSort(column: 0, ascending: false)
+        model.apply(resorted)
+        _ = model.value(row: 0, column: 0)
+        try await settle("resorted page") { model.cachedPages == [0] && !model.isLoading }
+        #expect(model.mark(row: 47) == .changed(cells: [1]))
+        resorted.sort = nil
+        model.apply(resorted)
         // The marker "30" was dropped with the rollback: the next refresh still starts at "20".
         try await refreshed(model, source, markers: 4)
         #expect(model.query.changes?.since == "20")
@@ -374,15 +385,41 @@ struct GridChangesTests {
         let model = GridModel(source: source)
         try await settle("count") { model.count != .estimated(0) && !model.isLoading }
         source.holdsPages = true
+        source.holdsMarkers = true
         _ = model.value(row: 0, column: 0)
         try await settle("page call") { source.pageCalls.count == 1 }
+        let pageCall = try #require(source.calls.firstIndex { if case .page = $0 { true } else { false } })
         model.refresh()
+        try await settle("marker call") { source.markerCalls == 2 }
+        let version = model.pagesVersion
+        // Only the stale page answers, while the refresh's marker is still out.
+        source.release(callAt: pageCall)
+        for _ in 0..<100 { await Task.yield() }
+        #expect(model.cachedPages.isEmpty, "a page asked before the refresh landed")
+        #expect(model.pagesVersion == version)
         source.releaseAll()
-        try await settle("look") { source.markerCalls == 2 && !model.isLoading }
-        for _ in 0..<50 { await Task.yield() }
-        #expect(source.pageCalls.count == 1 || model.cachedPages.isEmpty)
-        #expect(model.cachedPages.isEmpty || model.query.changes != nil)
-        #expect(model.mark(row: 2) == nil || model.query.changes != nil)
+        try await settle("look") { model.query.changes != nil && !model.isLoading }
+    }
+
+    @Test func aKeptCopyThatIsOneLookStaleIsNotUsed() async throws {
+        let source = source(changed: [2])
+        let model = try await opened(source)
+        source.setValue(.text("new"), row: 2, column: 1)
+        try await refreshed(model, source, markers: 2)
+        #expect(model.mark(row: 2) == .changed(cells: [1]))
+        // A sort drops the pages; nothing is cached when the next refresh copies.
+        var next = model.query
+        next.sort = GridSort(column: 0, ascending: false)
+        model.apply(next)
+        try await settle("idle") { !model.isLoading }
+        #expect(model.cachedPages.isEmpty)
+        source.setValue(.text("newer"), row: 2, column: 1)
+        model.refresh()
+        try await settle("marker") { source.markerCalls == 3 }
+        try await settle("idle") { !model.isLoading }
+        _ = model.value(row: 0, column: 0)
+        try await settle("page") { model.cachedPages == [0] && !model.isLoading }
+        #expect(model.mark(row: 47) == .newOrChanged)
     }
 
     @Test func clearDoesNotAdoptTheDroppedMarker() async throws {
