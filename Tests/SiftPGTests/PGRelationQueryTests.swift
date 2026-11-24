@@ -256,6 +256,6 @@ import Testing
         let query = GridQuery(changes: ChangeFilter(since: "1", only: true))
         let (sql, params) = Self.query(Self.relation(pk: nil, kind: .view)).pageSQL(index: 0, size: 500, query: query, after: nil)
         #expect(!sql.contains("xmin") && params.isEmpty)
-        #expect(PGRelationQuery.markerSQL == "SELECT (txid_snapshot_xmax(txid_current_snapshot()) % 4294967296)::text")
+        #expect(PGRelationQuery.markerSQL == "SELECT (txid_snapshot_xmin(txid_current_snapshot()) % 4294967296)::text")
     }
 }

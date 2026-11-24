@@ -55,26 +55,58 @@ import Testing
         try await Self.withPager("customers") { pager, _, names, admin in
             let marker = try await pager.changeMarker()
             _ = try admin.query("UPDATE \(names.a).customers SET email = 'changed@x.test' WHERE id = 1")
-            // A row lock writes xmax, not xmin: it is not a change.
-            _ = try admin.query("SELECT * FROM \(names.a).customers WHERE id = 2 FOR UPDATE")
             let rows = try await pager.page(0, size: 50, query: GridQuery(changes: ChangeFilter(since: marker, only: false)), after: nil)
             #expect(Self.flags(rows).filter(\.changed).map(\.id) == [1])
             #expect(Self.flags(rows).filter { !$0.changed }.map(\.id) == [2, 3])
         }
     }
 
-    /// Review focus 1: a commit between taking the marker and reading the page is never missed.
     @Test(.enabled(if: PGFixture.url != nil, gate))
-    func aRowCommittedBetweenMarkerAndPageReadIsFlagged() async throws {
-        try await Self.withPager("orders") { pager, _, names, admin in
+    func aRowHeldByForUpdateIsNotFlaggedAndTheReadDoesNotBlock() async throws {
+        try await Self.withPager("customers") { pager, _, names, _ in
+            var writable = try PGConnectionParameters(url: try #require(PGFixture.url))
+            writable.readOnly = false
+            let locker = try PGConnection(parameters: writable)
+            defer { locker.close() }
             let marker = try await pager.changeMarker()
-            _ = try admin.query("INSERT INTO \(names.a).orders (customer_id, total) VALUES (1, 99)")
-            let rows = try await pager.page(0, size: 50, query: GridQuery(changes: ChangeFilter(since: marker, only: false)), after: nil)
-            let flagged = Self.flags(rows)
-            #expect(flagged.count == 5)
-            #expect(flagged.last?.id == 5)
-            #expect(flagged.last?.changed == true)
-            #expect(flagged.dropLast().allSatisfy { !$0.changed })
+            _ = try locker.query("BEGIN")
+            do {
+                // A row lock writes xmax, not xmin: it is not a change, and a reader does not wait for it.
+                _ = try locker.query("SELECT * FROM \(names.a).customers WHERE id = 2 FOR UPDATE")
+                let rows = try await pager.page(0, size: 50, query: GridQuery(changes: ChangeFilter(since: marker, only: false)), after: nil)
+                #expect(Self.flags(rows).map(\.id) == [1, 2, 3])
+                #expect(Self.flags(rows).filter(\.changed).isEmpty)
+                _ = try locker.query("ROLLBACK")
+            } catch {
+                _ = try? locker.query("ROLLBACK")
+                throw error
+            }
+        }
+    }
+
+    /// Review focus 1: a transaction open at the marker that commits afterwards is never missed.
+    @Test(.enabled(if: PGFixture.url != nil, gate))
+    func aTransactionOpenAtTheMarkerThatCommitsLaterIsFlagged() async throws {
+        try await Self.withPager("orders") { pager, _, names, _ in
+            var writable = try PGConnectionParameters(url: try #require(PGFixture.url))
+            writable.readOnly = false
+            let other = try PGConnection(parameters: writable)
+            defer { other.close() }
+            _ = try other.query("BEGIN")
+            do {
+                // The insert assigns the transaction its xid, which is below the next one to be handed out.
+                _ = try other.query("INSERT INTO \(names.a).orders (customer_id, total) VALUES (1, 99)")
+                let marker = try await pager.changeMarker()
+                _ = try other.query("COMMIT")
+                let rows = try await pager.page(0, size: 50, query: GridQuery(changes: ChangeFilter(since: marker, only: false)), after: nil)
+                let flagged = Self.flags(rows)
+                #expect(flagged.count == 5)
+                #expect(flagged.last?.id == 5)
+                #expect(flagged.last?.changed == true)
+            } catch {
+                _ = try? other.query("ROLLBACK")
+                throw error
+            }
         }
     }
 
@@ -161,7 +193,7 @@ import Testing
     }
 
     @Test(.enabled(if: PGFixture.url != nil, gate))
-    func theMarkerRunsReadOnlyAndLeavesTheConnectionIdle() async throws {
+    func theMarkerLeavesTheConnectionIdleAndUsable() async throws {
         try await Self.withPager("customers") { pager, _, _, admin in
             let first = try await pager.changeMarker()
             let second = try await pager.changeMarker()

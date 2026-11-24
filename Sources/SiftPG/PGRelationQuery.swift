@@ -56,9 +56,13 @@ public struct PGRelationQuery: Sendable {
     /// The columns the select list names: every column, then `ctid::text` for a `ctid` key, kept for the keyset.
     public var selectedColumnCount: Int { relation.columns.count + (keyKind == .ctid ? 1 : 0) }
 
-    /// The marker for `ChangeFilter.since`: the next transaction id to be assigned, as the decimal text of a 32-bit xid.
+    /// The marker for `ChangeFilter.since`: the snapshot's xmin (the oldest transaction still running, or the next id
+    /// to be assigned when none is), as the decimal text of a 32-bit xid. Every xid below it has ended, so a
+    /// transaction that was already open when the marker was taken, and commits later, still has an xid at or
+    /// above it and its rows are flagged. Rows of transactions that committed just before the marker may be
+    /// flagged too: overlap is allowed, a gap is not.
     /// `txid_current_snapshot()` assigns no id, so it works read-only and on a standby.
-    public static let markerSQL = "SELECT (txid_snapshot_xmax(txid_current_snapshot()) % 4294967296)::text"
+    public static let markerSQL = "SELECT (txid_snapshot_xmin(txid_current_snapshot()) % 4294967296)::text"
 
     /// Views and foreign tables have no `xmin`.
     public var supportsChanges: Bool {
