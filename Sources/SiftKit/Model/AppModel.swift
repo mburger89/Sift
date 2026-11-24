@@ -185,10 +185,11 @@ public final class AppModel {
             active: GridPosition(row: 0, column: follow.targetColumn))
     }
 
-    /// Every change of place that carries a query and a cursor goes through here (history will record it here).
+    /// Every change of place that carries a query and a cursor goes through here. History is recorded in `selection`'s
+    /// `didSet`, and here only for a navigate onto the relation that is shown (the selection does not change then).
     /// The order matters: `load` clears the cursor, so the reveal comes after it.
     func navigate(to key: ConnectionKey, relation: RelationID, query: GridQuery?, active: GridPosition?) {
-        // The selection does not change on a self-reference (employees.manager_id), so nothing else would record it.
+        // The selection does not change on any navigate onto the shown relation (employees.manager_id), so nothing else records it.
         if !restoring, selection == .relation(key, relation) { history.push(place(of: key, relation)) }
         select(relation, in: key)
         relationTab = .rows

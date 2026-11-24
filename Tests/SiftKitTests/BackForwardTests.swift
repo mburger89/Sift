@@ -118,6 +118,15 @@ struct BackForwardTests {
         try await settle(o, try grid(o, products))
         #expect(o.model.selection == .relation(key, products))
 
+        // While away, the grids left behind change: another filter and another cursor. Back must undo that.
+        for (id, g) in [(customers, customerGrid), (orders, ordersGrid), (items, itemsGrid)] {
+            _ = id
+            g.load(GridQuery(filters: [GridFilter(column: 0, op: .eq, value: "9")]))
+            g.reveal(GridPosition(row: 1, column: 0))
+        }
+        try await o.window.runUntilIdle()
+        #expect(customerGrid.query != stop1 && ordersGrid.query != stop2 && itemsGrid.query != stop3)
+
         o.model.goBack()
         #expect(o.model.selection == .relation(key, items))
         try await settle(o, itemsGrid)
@@ -132,6 +141,7 @@ struct BackForwardTests {
 
         o.model.goBack()
         #expect(o.model.selection == .relation(key, customers))
+        try await settle(o, customerGrid)
         #expect(customerGrid.query == stop1)
         #expect(customerGrid.activePosition == GridPosition(row: 300, column: 0))
         try await o.window.runUntil { o.window.hasElement(identifier: "grid.cell.300.0") }
@@ -142,19 +152,22 @@ struct BackForwardTests {
 
     @Test func backAfterASelfReferenceRestoresTheUnfilteredGrid() async throws {
         let o = try await open()
-        o.model.navigate(to: key, relation: employees, query: GridQuery(), active: GridPosition(row: 17, column: 0))
+        o.model.navigate(to: key, relation: employees, query: GridQuery(), active: GridPosition(row: 300, column: 0))
         let g = try grid(o, employees)
         try await settle(o, g)
         let before = g.query
-        try follow(o, from: employees, row: 17, to: employees)
+        try follow(o, from: employees, row: 300, to: employees)
         try await settle(o, g)
         #expect(g.query != before && g.query.filters.count == 1)
         #expect(o.model.canGoBack)
         o.model.goBack()
         try await settle(o, g)
         #expect(g.query == before)
-        #expect(g.activePosition == GridPosition(row: 17, column: 0))
+        #expect(g.activePosition == GridPosition(row: 300, column: 0))
         #expect(!o.model.canGoBack && o.model.canGoForward)
+        try await o.window.runUntil { o.window.hasElement(identifier: "grid.cell.300.0") }
+        try await o.window.runUntilIdle()
+        #expect(try o.window.element(identifier: "grid.cell.300.0").visibleFrame.size.height.value > 0)
     }
 
     @Test func primaryBracketsGoBackAndForward() async throws {
@@ -194,23 +207,32 @@ struct BackForwardTests {
 
     @Test func anEntryWhoseSessionClosedShowsNotInTheSchema() async throws {
         let o = try await open()
-        let gone = RelationID("shop", "dropped")
-        o.model.select(gone, in: key)
-        o.model.select(orders, in: key)
+        // An entry that had a grid (so it carries a query), whose relation is then dropped from the snapshot.
+        o.model.navigate(to: key, relation: orders, query: GridQuery(), active: GridPosition(row: 1, column: 0))
+        o.model.select(customers, in: key)
+        #expect(o.model.place(of: key, orders).query != nil)
+        let source = o.rig.sources[0]
+        let schema = source.schema
+        source.schema = SchemaSnapshot(
+            serverVersion: schema.serverVersion, schemas: schema.schemas,
+            relations: schema.relations.filter { $0.id != orders },
+            foreignKeys: schema.foreignKeys.filter { $0.from != orders && $0.to != orders })
+        await o.model.sessions[key]?.refreshSchema()
+        try await o.window.runUntilIdle()
+        o.model.goBack()
+        #expect(o.model.selection == .relation(key, orders))
+        try await o.window.runUntilIdle()
+        #expect(try o.window.element(identifier: "detail.notice").value == "This table is not in the current schema.")
+        #expect(try o.window.element(identifier: "detail.forward").isEnabled, "the buttons stay on a gone entry")
+        // An entry of a connection with no session.
         let elsewhere = ConnectionKey.container(name: "elsewhere")
         o.model.selection = .relation(elsewhere, orders)
-        o.model.select(orders, in: key)
-        try await o.window.runUntilIdle()
-        // Back to the other connection (no session), then to the dropped table: both are selected, neither crashes.
+        o.model.select(customers, in: key)
         o.model.goBack()
         #expect(o.model.selection == .relation(elsewhere, orders))
         try await o.window.runUntilIdle()
         #expect(try o.window.element(identifier: "detail.notice").value == "Not connected.")
-        o.model.goBack()
-        o.model.goBack()
-        #expect(o.model.selection == .relation(key, gone))
-        try await o.window.runUntilIdle()
-        #expect(try o.window.element(identifier: "detail.notice").value == "This table is not in the current schema.")
+        #expect(try o.window.element(identifier: "detail.forward").isEnabled)
     }
 
     @Test func backAndForwardDoNotPush() async throws {

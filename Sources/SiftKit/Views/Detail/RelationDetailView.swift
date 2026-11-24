@@ -47,6 +47,7 @@ struct RelationDetailView: Component {
         } else {
             VStack(alignment: .leading, spacing: Pixels(8)) {
                 ConnectionBanner(model: model, key: key)
+                HistoryButtons(model: model).equatable()
                 Text(id.name).font(size: 20).accessibilityIdentifier("detail.title")
                 Text(model.sessions[key] == nil ? "Not connected." : "This table is not in the current schema.")
                     .foregroundColor(.secondary)
