@@ -43,7 +43,7 @@ final class SQLHighlighter: CodeHighlightProvider {
         cursor = buffer.makeEditCursor()
         var byKind: [SQLTokenKind: CodeStyleID] = [:]
         for kind in [SQLTokenKind.keyword, .string, .number, .comment, .parameter] {
-            if let color = SQLTheme.color(for: kind) { byKind[kind] = decorations.register(CodeStyle(foreground: color)) }
+            if let style = SQLTheme.style(for: kind) { byKind[kind] = decorations.register(style) }
         }
         styles = Styles(byKind: byKind, error: decorations.register(CodeStyle(underline: .wavy(SQLTheme.error))))
         decorations.highlightProvider = self

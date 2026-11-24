@@ -64,6 +64,9 @@ struct SQLHighlighterTests {
         #expect(colour("$1") == SQLTheme.parameter)
         #expect(colour("-- note") == SQLTheme.comment)
         #expect(colour("/* c */") == SQLTheme.comment)
+        // Comments are italic; the other kinds leave the slope alone.
+        #expect(SQLTheme.style(for: .comment)?.italic == true)
+        #expect(SQLTheme.style(for: .keyword)?.italic == nil)
         // Identifiers, operators and punctuation keep the text colour.
         #expect(!runs.contains { $0.0 == "id" || $0.0 == "=" || $0.0 == "," })
         // Not vacuous: every colour is a different one.
@@ -102,6 +105,9 @@ struct SQLHighlighterTests {
         let comment = rig.decorations.highlights(in: snapshot.lineRange(3).lowerBound..<snapshot.lineRange(4).upperBound, layer: .syntax)
             .map { rig.decorations.style($0.style).foreground }
         #expect(!comment.isEmpty && comment.allSatisfy { $0 == SQLTheme.comment }, "\(comment)")
+        let slopes = rig.decorations.highlights(in: snapshot.lineRange(3).lowerBound..<snapshot.lineRange(4).upperBound, layer: .syntax)
+            .map { rig.decorations.style($0.style).italic }
+        #expect(!slopes.isEmpty && slopes.allSatisfy { $0 == true }, "\(slopes)")
         #expect(rig.highlighter.cache.startState(line: 3) == .blockComment(depth: 1))
         // Closing it again restores the colours.
         _ = rig.buffer.replace(at..<(at + 2), with: "", origin: .typing)
