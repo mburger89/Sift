@@ -75,7 +75,10 @@ public struct PGRelationQuery: Sendable {
     /// The query's change filter, or nil when the relation has no `xmin` to compare.
     private func effectiveChanges(_ query: GridQuery) -> ChangeFilter? { supportsChanges ? query.changes : nil }
 
-    private static let changedExpression = "age(xmin) <= age($1::xid)"
+    /// True for a row version written by a transaction at or after the marker. `age(xmin)` is `(int32)(now - xmin)`.
+    /// Freezing keeps the raw `xmin`, so a row 2^31 to 2^32 transactions old has a negative age; `BETWEEN 0 AND`
+    /// keeps those old rows out. A false positive needs an age within `age(marker)` of a multiple of 2^32.
+    private static let changedExpression = "age(xmin) BETWEEN 0 AND age($1::xid)"
 
     // MARK: Pages
 

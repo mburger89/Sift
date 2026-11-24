@@ -208,11 +208,11 @@ import Testing
         let query = GridQuery(changes: ChangeFilter(since: "123"))
         let q = Self.query(Self.relation(pk: nil))
         let (sql, params) = q.pageSQL(index: 0, size: 500, query: query, after: nil)
-        #expect(sql.contains("ctid::text AS \"_sift_ctid\", age(xmin) <= age($1::xid) AS \"_sift_changed\" FROM"), "\(sql)")
+        #expect(sql.contains("ctid::text AS \"_sift_ctid\", age(xmin) BETWEEN 0 AND age($1::xid) AS \"_sift_changed\" FROM"), "\(sql)")
         #expect(params == ["123"])
         #expect(!sql.contains("WHERE"))
         let keyed = Self.query().pageSQL(index: 0, size: 500, query: query, after: nil)
-        #expect(keyed.sql.contains("\"b\", age(xmin) <= age($1::xid) AS \"_sift_changed\" FROM"), "\(keyed.sql)")
+        #expect(keyed.sql.contains("\"b\", age(xmin) BETWEEN 0 AND age($1::xid) AS \"_sift_changed\" FROM"), "\(keyed.sql)")
     }
 
     @Test func onlyChangesAlsoFiltersAndCountsWithTheFlag() {
@@ -220,10 +220,10 @@ import Testing
             filters: [GridFilter(column: 1, op: .eq, value: "x")], changes: ChangeFilter(since: "123", only: true))
         #expect(query.narrows)
         let (sql, params) = Self.query().pageSQL(index: 0, size: 500, query: query, after: nil)
-        #expect(sql.contains("WHERE age(xmin) <= age($1::xid) AND \"name\" = $2::text"), "\(sql)")
+        #expect(sql.contains("WHERE age(xmin) BETWEEN 0 AND age($1::xid) AND \"name\" = $2::text"), "\(sql)")
         #expect(params == ["123", "x"])
         let (count, countParams) = Self.query().countSQL(query: query)
-        #expect(count.contains("WHERE age(xmin) <= age($1::xid) AND \"name\" = $2::text"), "\(count)")
+        #expect(count.contains("WHERE age(xmin) BETWEEN 0 AND age($1::xid) AND \"name\" = $2::text"), "\(count)")
         #expect(countParams == ["123", "x"])
         // Without `only` a count carries no marker.
         let plain = Self.query().countSQL(query: GridQuery(changes: ChangeFilter(since: "123")))
@@ -242,7 +242,7 @@ import Testing
         let after: [SiftValue] = [.int(7), .null, .text("t"), .null, .text("x"), .bool(true)]
         let query = GridQuery(changes: ChangeFilter(since: "9", only: true))
         let (sql, params) = Self.query().pageSQL(index: 3, size: 500, query: query, after: after)
-        #expect(sql.contains("WHERE age(xmin) <= age($1::xid) AND \"id\" > $2"), "\(sql)")
+        #expect(sql.contains("WHERE age(xmin) BETWEEN 0 AND age($1::xid) AND \"id\" > $2"), "\(sql)")
         #expect(params == ["9", "7"])
         #expect(!sql.contains("OFFSET"))
     }
