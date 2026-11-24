@@ -27,6 +27,9 @@ struct GridViewTests {
         rig.sources[0].setGrid(grid, for: orders)
         await rig.model.refreshDiscovery()
         await rig.model.open(key)
+        // A session opens `orders` newest first (its key sorts); these tests read the fake's rows in generated order.
+        // Applied in the same turn the grid is made, before anything is asked of the source.
+        try #require(rig.model.sessions[key]?.grid(for: orders)).apply(GridQuery())
         let window = try siftWindow(model: rig.model, recordsLayout: recordsLayout)
         rig.model.select(orders, in: key)
         try await window.runUntilIdle()

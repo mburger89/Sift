@@ -1,3 +1,4 @@
+import Foundation
 import Observation
 import SiftCore
 
@@ -10,6 +11,13 @@ public struct GridPosition: Hashable, Sendable {
         self.row = row
         self.column = column
     }
+}
+
+/// How a row differs from the previous look: the row was written (`newOrChanged`, no earlier copy to compare with), or
+/// it was and these cells (indexes into `columns`) differ from the copy taken at Refresh (possibly none: a no-op update).
+public enum RowMark: Equatable, Sendable {
+    case newOrChanged
+    case changed(cells: Set<Int>)
 }
 
 /// The paged rows of one `GridSource`, as `Table` reads them.
@@ -45,11 +53,32 @@ public final class GridModel {
     public var draftOp = FilterOp.contains
     public var draftValue = ""
     public var searchText = ""
+    /// The time of the look the highlight is relative to; nil when nothing is highlighted.
+    public private(set) var changesSince: Date?
+    /// The cell a `reveal(_:)` asked the table to scroll to.
+    public private(set) var revealRequest: GridPosition?
+    /// Newest-first sorts, one per recency candidate in candidate order; set by the session. Empty hides the toggle.
+    public var recencySorts: [GridSort] = []
+    public var recencyColumns: [Int] { recencySorts.map(\.column) }
+    private var chosenNewestColumn: Int?
 
     public let source: any GridSource
     public var columns: [ResultColumn] { source.columns }
     public var rows: GridRowRefs { GridRowRefs(count: count.value) }
     public var orderNote: String? { source.orderNote }
+
+    /// Whether the query sorts newest first on one of the recency candidates.
+    public var isNewestFirst: Bool {
+        guard let sort = query.sort else { return false }
+        return recencySorts.contains(sort)
+    }
+
+    /// The recency column the toggle sorts by: the one the query sorts by now, else the one chosen, else the first.
+    public var newestColumn: Int? {
+        if let sort = query.sort, recencySorts.contains(sort) { return sort.column }
+        if let chosen = chosenNewestColumn, recencyColumns.contains(chosen) { return chosen }
+        return recencySorts.first?.column
+    }
 
     // MARK: Internals
 
@@ -57,6 +86,7 @@ public final class GridModel {
         case count
         case exactCount
         case page(Int)
+        case marker
     }
     private struct InFlight {
         var work: Work
@@ -66,6 +96,7 @@ public final class GridModel {
         var query: GridQuery
         var pages: [Int: [[SiftValue]]]
         var count: RowCount
+        var marks: [Int: [RowMark?]]
     }
     private struct Read {
         var epoch: Int
@@ -74,6 +105,16 @@ public final class GridModel {
 
     @ObservationIgnored private let clock: any SiftClock
     @ObservationIgnored private var pages: [Int: [[SiftValue]]] = [:]
+    @ObservationIgnored private var marks: [Int: [RowMark?]] = [:]
+    /// Rows by key, copied from the cache when a Refresh's marker lands: what changed cells are found against.
+    @ObservationIgnored private var keyCopy: [String: [SiftValue]] = [:]
+    @ObservationIgnored private var markerNeeded: Bool
+    /// The marker taken when the grid opened and its look has not landed: a refresh's marker also serves as it.
+    @ObservationIgnored private var openMarkerPending: Bool
+    @ObservationIgnored private var pendingRefresh = false
+    @ObservationIgnored private var previousMarker: String?
+    @ObservationIgnored private var previousMarkerTime: Date?
+    @ObservationIgnored private let now: @Sendable () -> Date
     @ObservationIgnored private var lastRead: [Int: Read] = [:]
     @ObservationIgnored private var wanted: Set<Int> = []
     @ObservationIgnored private var failedPages: Set<Int> = []
@@ -93,12 +134,22 @@ public final class GridModel {
     /// How many times `value(row:column:)` has been asked. For cost tests.
     @ObservationIgnored public private(set) var valueReads = 0
 
+    /// How many cell values the diff against the key copy has compared. For cost tests.
+    @ObservationIgnored public private(set) var diffComparisons = 0
+
     /// Sets the read counter back to zero. For cost tests.
     public func resetReadCount() { valueReads = 0 }
 
-    public init(source: any GridSource, clock: any SiftClock = SystemClock()) {
+    public init(
+        source: any GridSource, clock: any SiftClock = SystemClock(), initialQuery: GridQuery = GridQuery(),
+        now: @escaping @Sendable () -> Date = { Date() }
+    ) {
         self.source = source
         self.clock = clock
+        self.now = now
+        query = initialQuery
+        markerNeeded = source.supportsChanges
+        openMarkerPending = source.supportsChanges
         isLoading = true
         scheduleTurn()
     }
@@ -126,6 +177,15 @@ public final class GridModel {
         return loaded[index][column]
     }
 
+    /// How row `row` differs from the previous look, or nil. O(1), from the page cache; never an observed read.
+    public func mark(row: Int) -> RowMark? {
+        let size = GridPaging.pageSize
+        guard let page = marks[row / size] else { return nil }
+        let index = row - (row / size) * size
+        guard page.indices.contains(index) else { return nil }
+        return page[index]
+    }
+
     /// The pages in the cache, in order. For tests.
     public var cachedPages: [Int] { pages.keys.sorted() }
 
@@ -135,13 +195,21 @@ public final class GridModel {
     /// filters or the search changed. If the server refuses the new query, the model goes back to the last good one.
     public func apply(_ query: GridQuery) {
         guard query != self.query else { return }
+        reload(query, keepSelection: false)
+    }
+
+    /// Shows `query` even when it equals the current one, dropping the pages. A refresh keeps the cursor and the
+    /// selection (`keepSelection`) and asks for the count again (`recount`).
+    private func reload(_ query: GridQuery, keepSelection: Bool, recount: Bool = false) {
         if inFlight != nil {
             source.cancelCurrent()
             inFlight = nil
         }
         generation += 1
-        if previous == nil { previous = Snapshot(query: self.query, pages: pages, count: count) }
-        let narrowed = query.filters != self.query.filters || query.search != self.query.search
+        if previous == nil { previous = Snapshot(query: self.query, pages: pages, count: count, marks: marks) }
+        let narrowed =
+            query.filters != self.query.filters || query.search != self.query.search
+            || query.changes?.only != self.query.changes?.only || (recount && query.changes?.only == true)
         self.query = query
         resetPages()
         error = nil
@@ -151,13 +219,97 @@ public final class GridModel {
             countNeeded = true
             exactNeeded = false
             isCountingExactly = false
+        } else if recount {
+            countNeeded = true
         }
-        selectedRow = nil
-        activePosition = nil
+        if !keepSelection {
+            selectedRow = nil
+            activePosition = nil
+        }
         rejectedFilters = []
         pagesVersion += 1
         isLoading = true
         scheduleTurn()
+    }
+
+    // MARK: Newest first
+
+    public func setNewestFirst(_ on: Bool) { sortNewest(on, column: newestColumn) }
+
+    /// Chooses the column the toggle sorts by, and sorts by it.
+    public func setNewestColumn(_ column: Int) {
+        guard recencyColumns.contains(column) else { return }
+        chosenNewestColumn = column
+        sortNewest(true, column: column)
+    }
+
+    private func sortNewest(_ on: Bool, column: Int?) {
+        var next = query
+        if on {
+            guard let column, let sort = recencySorts.first(where: { $0.column == column }) else { return }
+            next.sort = sort
+        } else {
+            next.sort = nil
+        }
+        apply(next)
+    }
+
+    // MARK: Refresh and change marks
+
+    /// Looks again. With a source that can flag changes, takes a marker first and then reads with the changes since
+    /// the previous one; otherwise it only reads the same query again.
+    public func refresh() {
+        guard source.supportsChanges else {
+            reload(query, keepSelection: true, recount: true)
+            return
+        }
+        pendingRefresh = true
+        markerNeeded = true
+        if inFlight != nil {
+            source.cancelCurrent()
+            inFlight = nil
+        }
+        generation += 1
+        isLoading = true
+        scheduleTurn()
+    }
+
+    /// Keeps only the changed rows (or all of them again). Does nothing without a highlight.
+    public func setOnlyChanges(_ on: Bool) {
+        guard var changes = query.changes else { return }
+        changes.only = on
+        var next = query
+        next.changes = changes
+        apply(next)
+    }
+
+    /// Drops the highlight. The marker is kept, so the next Refresh still shows everything since the last look.
+    public func clearChanges() {
+        let wasPending = pendingRefresh
+        pendingRefresh = false
+        markerNeeded = openMarkerPending
+        keyCopy = [:]
+        changesSince = nil
+        if wasPending, !markerNeeded, inFlight?.work == .marker {
+            source.cancelCurrent()
+            inFlight = nil
+            generation += 1
+        }
+        var next = query
+        next.changes = nil
+        if next != query { apply(next) } else { scheduleTurn() }
+    }
+
+    public func reveal(_ position: GridPosition) {
+        activePosition = position
+        revealRequest = position
+    }
+
+    /// A string that identifies a row by the values of the key columns, nil when any is out of range.
+    private func key(of row: [SiftValue]) -> String? {
+        let keys = source.keyColumns
+        guard !keys.isEmpty, keys.allSatisfy({ row.indices.contains($0) }) else { return nil }
+        return keys.map { String(describing: row[$0]) }.joined(separator: "\u{1F}")
     }
 
     // MARK: The toolbar's actions
@@ -238,6 +390,7 @@ public final class GridModel {
 
     private func resetPages() {
         pages = [:]
+        marks = [:]
         lastRead = [:]
         wanted = []
         failedPages = []
@@ -274,7 +427,9 @@ public final class GridModel {
             inFlight = nil
         }
         if inFlight == nil {
-            if exactNeeded {
+            if markerNeeded {
+                start(.marker)
+            } else if exactNeeded {
                 start(.exactCount)
             } else if countNeeded {
                 start(.count)
@@ -282,7 +437,7 @@ public final class GridModel {
                 start(.page(next))
             }
         }
-        let busy = inFlight != nil || countNeeded || !missing.isEmpty
+        let busy = inFlight != nil || markerNeeded || countNeeded || !missing.isEmpty
         if isLoading != busy { isLoading = busy }
     }
 
@@ -310,6 +465,9 @@ public final class GridModel {
                 case .page(let page):
                     let rows = try await source.page(page, size: GridPaging.pageSize, query: query, after: after)
                     self?.pageArrived(page, rows, generation: mineGeneration, serial: mine)
+                case .marker:
+                    let marker = try await source.changeMarker()
+                    self?.markerArrived(marker, generation: mineGeneration, serial: mine)
                 }
             } catch {
                 self?.failed(error, work: work, generation: mineGeneration, serial: mine)
@@ -343,10 +501,52 @@ public final class GridModel {
         pump()
     }
 
-    private func pageArrived(_ page: Int, _ rows: [[SiftValue]], generation mine: Int, serial mineSerial: Int) {
+    private func markerArrived(_ marker: String, generation mine: Int, serial mineSerial: Int) {
+        guard finish(serial: mineSerial, generation: mine) else { return pump() }
+        let taken = now()
+        markerNeeded = false
+        openMarkerPending = false
+        let earlier = previousMarker
+        let earlierTime = previousMarkerTime
+        previousMarker = marker
+        previousMarkerTime = taken
+        guard pendingRefresh else { return pump() }
+        pendingRefresh = false
+        keyCopy = [:]
+        if earlier != nil {
+            for rows in pages.values {
+                for row in rows { if let k = key(of: row) { keyCopy[k] = row } }
+            }
+        }
+        var next = query
+        if let earlier {
+            next.changes = ChangeFilter(since: earlier, only: query.changes?.only ?? false)
+            changesSince = earlierTime
+        } else {
+            next.changes = nil
+            changesSince = nil
+        }
+        reload(next, keepSelection: true, recount: true)
+    }
+
+    private func pageArrived(_ page: Int, _ landed: [[SiftValue]], generation mine: Int, serial mineSerial: Int) {
         guard finish(serial: mineSerial, generation: mine) else { return pump() }
         previous = nil
+        var rows = landed
+        var pageMarks: [RowMark?] = []
+        if query.changes != nil, source.supportsChanges {
+            pageMarks.reserveCapacity(rows.count)
+            for index in rows.indices {
+                var flagged = false
+                if case .bool(let flag)? = rows[index].last {
+                    flagged = flag
+                    rows[index].removeLast()
+                }
+                pageMarks.append(flagged ? markFor(rows[index]) : nil)
+            }
+        }
         pages[page] = rows
+        marks[page] = pageMarks.isEmpty ? nil : pageMarks
         wanted.remove(page)
         let size = GridPaging.pageSize
         if rows.count < size {
@@ -357,6 +557,17 @@ public final class GridModel {
         evict()
         pagesVersion += 1
         pump()
+    }
+
+    /// The mark of a flagged row: the cells that differ from the copy of the same key, or a row mark without one.
+    private func markFor(_ row: [SiftValue]) -> RowMark {
+        guard let k = key(of: row), let old = keyCopy[k] else { return .newOrChanged }
+        var cells = Set<Int>()
+        for c in 0..<columns.count where old.indices.contains(c) && row.indices.contains(c) {
+            diffComparisons += 1
+            if old[c] != row[c] { cells.insert(c) }
+        }
+        return .changed(cells: cells)
     }
 
     private func failed(_ error: any Error, work: Work, generation mine: Int, serial mineSerial: Int) {
@@ -370,6 +581,24 @@ public final class GridModel {
                 return pump()
             }
         }
+        if case .marker = work {
+            // A marker that fails never blocks reading. On open there is no previous marker; on a refresh the old one
+            // is kept (so the next refresh still covers everything since it) and the rows are read plain.
+            markerNeeded = false
+            openMarkerPending = false
+            if let lost = error as? SourceError, lost.kind == .connectionLost { onConnectionLost?(error) }
+            if pendingRefresh {
+                pendingRefresh = false
+                keyCopy = [:]
+                changesSince = nil
+                var next = query
+                next.changes = nil
+                reload(next, keepSelection: true, recount: true)
+            } else {
+                pump()
+            }
+            return
+        }
         let message = Self.describe(error)
         var filterRefusal = false
         if let source = error as? SourceError, case .server = source.kind { filterRefusal = previous != nil }
@@ -381,6 +610,7 @@ public final class GridModel {
             let narrowedDifferently = !rejectedFilters.isEmpty || query.search != good.query.search
             query = good.query
             pages = good.pages
+            marks = good.marks
             count = good.count
             lastRead = [:]
             wanted = []
@@ -402,6 +632,7 @@ public final class GridModel {
         case .exactCount:
             exactNeeded = false
             isCountingExactly = false
+        case .marker: break
         }
         pump()
     }
@@ -412,6 +643,7 @@ public final class GridModel {
             let victim = pages.keys.filter { !isVisible($0) }.min { (lastRead[$0]?.tick ?? -1) < (lastRead[$1]?.tick ?? -1) }
             guard let victim else { return }
             pages[victim] = nil
+            marks[victim] = nil
             lastRead[victim] = nil
         }
     }

@@ -134,13 +134,18 @@ public final class DatabaseSession {
     public func grid(for id: RelationID) -> GridModel? {
         if let existing = grids[id] { return existing.model }
         guard let relation = snapshot?.relation(id), let gridSource = gridSource(for: id) else { return nil }
-        let model = GridModel(source: gridSource, clock: clock)
+        let model = GridModel(
+            source: gridSource, clock: clock, initialQuery: GridQuery(sort: RecencyColumns.defaultSort(for: relation)))
+        model.recencySorts = RecencyColumns.candidates(for: relation).map { RecencyColumns.newestSort(column: $0, in: relation) }
         if let current = source {
             model.onConnectionLost = { [weak self] error in _ = self?.noticeLoss(error, of: current) }
         }
         grids[id] = (model, relation)
         return model
     }
+
+    /// The grid of a relation if one is open; never makes one.
+    public func existingGrid(for id: RelationID) -> GridModel? { grids[id]?.model }
 
     // MARK: The SQL editor
 

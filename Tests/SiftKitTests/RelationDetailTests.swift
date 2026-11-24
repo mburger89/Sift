@@ -56,13 +56,14 @@ struct RelationDetailTests {
 
     @Test func nullIsDistinctFromEmpty() async throws {
         let (_, window) = try await open(orders, tab: .rows)
-        let null = try window.element(identifier: "grid.cell.0.2")
+        // `orders` opens newest first (id descending): the preview's first row is the last one.
+        let null = try window.element(identifier: "grid.cell.2.2")
         let empty = try window.element(identifier: "grid.cell.1.2")
         #expect(null.value == "null")
         #expect(empty.value == "empty")
         // Not vacuous: ordinary cells are there and read as their values.
         #expect(try window.element(identifier: "grid.cell.0.1").value == "10")
-        #expect(try window.element(identifier: "grid.cell.2.2").value == "done")
+        #expect(try window.element(identifier: "grid.cell.0.2").value == "done")
     }
 
     @Test func exactCountReplacesTheEstimate() async throws {
