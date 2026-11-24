@@ -4,8 +4,12 @@ import SiftCore
 /// fixture DDL (plan section 6, task B4); the live introspection test proves the
 /// two agree, with OIDs and estimates zeroed.
 public enum FixtureSnapshot {
-    /// 13 relations (partitions are hidden) and 8 foreign keys.
-    public static func shop(schemaA: String = "shop", schemaB: String = "tagging") -> SchemaSnapshot {
+    /// 13 relations (partitions are hidden) and 8 foreign keys. With `withPagerTables`, the three tables the live
+    /// fixture also holds for pager tests (`notes`, `codes`, `code_uses`) and their 2 foreign keys: 16 and 10.
+    /// The UI tests that lay out the shop leave them out.
+    public static func shop(
+        schemaA: String = "shop", schemaB: String = "tagging", withPagerTables: Bool = false
+    ) -> SchemaSnapshot {
         let a = schemaA
         let b = schemaB
         func id(_ name: String) -> RelationID { RelationID(a, name) }
@@ -135,6 +139,29 @@ public enum FixtureSnapshot {
             ],
             pk: ["id", "at"])
         let weird = table("Weird \"Name\"", columns: [col("id", 1, "integer", null: false)], pk: ["id"])
+        let notes = table(
+            "notes",
+            columns: [
+                col("id", 1, "integer", null: false, def: "nextval('\(a).notes_id_seq'::regclass)"),
+                col("body", 2, "text"), col("created_at", 3, "timestamp with time zone"),
+            ],
+            pk: ["id"])
+        let codes = table(
+            "codes",
+            columns: [col("code", 1, "bytea", null: false), col("amount", 2, "numeric(12,2)", null: false)],
+            pk: ["code"], unique: [KeyConstraint(name: "codes_amount_key", columns: ["amount"])],
+            indexes: [
+                IndexInfo(
+                    name: "codes_amount_key", columns: ["amount"], isUnique: true, isPrimary: false, method: "btree",
+                    definition: "CREATE UNIQUE INDEX codes_amount_key ON \(a).codes USING btree (amount)")
+            ])
+        let codeUses = table(
+            "code_uses",
+            columns: [
+                col("id", 1, "integer", null: false, def: "nextval('\(a).code_uses_id_seq'::regclass)"),
+                col("code", 2, "bytea"), col("amount", 3, "numeric(12,2)"),
+            ],
+            pk: ["id"])
         let neverAnalyzed = table(
             "never_analyzed", estimate: .unknown, columns: [col("id", 1, "integer")])
         let recentOrders = table(
@@ -143,6 +170,7 @@ public enum FixtureSnapshot {
             "customer_totals", kind: .materializedView,
             columns: [col("customer_id", 1, "bigint"), col("total", 2, "numeric")])
 
+        let pagerTables = withPagerTables ? [notes, codes, codeUses] : []
         let foreignKeys = [
             fk("orders_customer_id_fkey", "orders", ["customer_id"], to: id("customers"), ["id"], onDelete: .cascade),
             fk("order_items_order_id_fkey", "order_items", ["order_id"], to: id("orders"), ["id"]),
@@ -155,12 +183,19 @@ public enum FixtureSnapshot {
             fk("product_tags_tag_id_fkey", "product_tags", ["tag_id"], to: RelationID(b, "tags"), ["id"]),
             fk("events_customer_id_fkey", "events", ["customer_id"], to: id("customers"), ["id"]),
         ]
+        let pagerForeignKeys =
+            withPagerTables
+            ? [
+                fk("code_uses_code_fkey", "code_uses", ["code"], to: id("codes"), ["code"]),
+                fk("code_uses_amount_fkey", "code_uses", ["amount"], to: id("codes"), ["amount"]),
+            ] : []
         return SchemaSnapshot(
             serverVersion: 170000, schemas: [a, b],
             relations: [
                 tags, customers, products, orders, orderItems, shipments, employees, productTags, events, weird,
+                ] + pagerTables + [
                 neverAnalyzed, recentOrders, customerTotals,
             ],
-            foreignKeys: foreignKeys)
+            foreignKeys: foreignKeys + pagerForeignKeys)
     }
 }

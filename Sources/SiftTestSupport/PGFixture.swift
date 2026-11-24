@@ -36,7 +36,7 @@ public enum PGFixture {
             _ = try? admin.query("DROP SCHEMA IF EXISTS \(names.b) CASCADE")
         }
         for statement in ddl(a: names.a, b: names.b).before { _ = try admin.query(statement) }
-        for table in ["customers", "products", "orders", "order_items", "shipments", "employees", "product_tags", "events", "customer_totals", "\"Weird \"\"Name\"\"\""] {
+        for table in ["customers", "products", "orders", "order_items", "shipments", "employees", "product_tags", "events", "customer_totals", "\"Weird \"\"Name\"\"\"", "notes", "codes", "code_uses"] {
             _ = try admin.query("ANALYZE \(names.a).\(table)")
         }
         _ = try admin.query("ANALYZE \(names.b).tags")
@@ -150,6 +150,13 @@ public enum PGFixture {
             "CREATE TABLE \(a).events_2025 PARTITION OF \(a).events FOR VALUES FROM ('2025-01-01') TO ('2026-01-01')",
             "CREATE TABLE \(a).events_2026 PARTITION OF \(a).events FOR VALUES FROM ('2026-01-01') TO ('2027-01-01')",
             "CREATE TABLE \(a).\"Weird \"\"Name\"\"\" (id int PRIMARY KEY)",
+            "CREATE TABLE \(a).notes (id serial PRIMARY KEY, body text, created_at timestamptz)",
+            "CREATE TABLE \(a).codes (code bytea PRIMARY KEY, amount numeric(12,2) NOT NULL UNIQUE)",
+            """
+            CREATE TABLE \(a).code_uses (
+              id serial PRIMARY KEY, code bytea REFERENCES \(a).codes,
+              amount numeric(12,2) REFERENCES \(a).codes (amount))
+            """,
             "INSERT INTO \(b).tags (label) VALUES ('red'), ('blue')",
             "INSERT INTO \(a).customers (email) VALUES ('a@x.test'), ('b@x.test'), ('c@x.test')",
             """
@@ -166,6 +173,14 @@ public enum PGFixture {
             """,
             "INSERT INTO \(a).shipments (order_id, product_id) VALUES (1, '00000000-0000-0000-0000-000000000001')",
             "INSERT INTO \(a).employees (manager_id) VALUES (NULL), (1)",
+            """
+            INSERT INTO \(a).notes (body, created_at) VALUES
+              ('older', '2026-02-01 09:00:00+00'), ('oldest', '2026-01-01 09:00:00+00'),
+              ('newest', '2026-03-01 09:00:00+00'), ('undated 1', NULL), ('undated 2', NULL), ('undated 3', NULL)
+            """,
+            // A binary key with a zero byte and 0xff, and a numeric key with a trailing zero.
+            "INSERT INTO \(a).codes VALUES ('\\x00ff41'::bytea, 10.50), ('\\x01'::bytea, 2.00)",
+            "INSERT INTO \(a).code_uses (code, amount) VALUES ('\\x00ff41'::bytea, 10.50)",
             "CREATE VIEW \(a).recent_orders AS SELECT id, customer_id FROM \(a).orders",
             """
             CREATE MATERIALIZED VIEW \(a).customer_totals AS

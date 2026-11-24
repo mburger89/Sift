@@ -41,7 +41,7 @@ func withSnapshot(
             #expect(kind("recent_orders") == .view)
             #expect(kind("customer_totals") == .materializedView)
             #expect(s.relation(RelationID(n.a, "events_2025")) == nil)
-            #expect(s.relations.count == 13)
+            #expect(s.relations.count == 16)
         }
     }
 
@@ -80,7 +80,7 @@ func withSnapshot(
     func foreignKeysAreListedOnceInBothDirections() async throws {
         try await withSnapshot { s, n in
             // The plan said 9; its DDL (and FixtureSnapshot) has 8.
-            #expect(s.foreignKeys.count == 8)
+            #expect(s.foreignKeys.count == 10)
             let customers = RelationID(n.a, "customers")
             #expect(s.incoming(of: customers).map(\.from.name).sorted() == ["events", "orders"])
             let toCustomers = try #require(s.outgoing(of: RelationID(n.a, "orders")).first)
