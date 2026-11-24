@@ -128,8 +128,13 @@ struct GridCostTests {
         #expect(GridToolbar.bodyCount > toolbar, "the sibling did not redraw")
         let work = total(window)
         #expect(window.frameWork.count > 0 && work.builds > 0)
-        #expect(work.tableRowsRealized == 0, "the table realised \(work.tableRowsRealized) rows for a sibling's redraw")
+        // Sift's side is what this pins, and it holds in every frame: no Sift component of the table's runs again.
         #expect(GridTable.bodyCount == tableBodies, "the table body ran again")
+        // Not asserted: `work.tableRowsRealized == 0`. In about 7% of runs MetalUI lays the table out again in the
+        // keystroke frame because that frame was built with replay disallowed (`METALUI_TRACE_RETAINED=1` shows
+        // `replayAllowed=false`), with `GridTable.bodyCount` unchanged: a MetalUI timing effect, not a Sift
+        // rebuild (final review M7). MetalUITesting's `FrameWork` does not say whether a frame could replay, so the
+        // row count cannot be asserted only for the frames that could.
     }
 
     /// A grid whose source flags changes, in a window with a refresh already landed (rows 2 and 7 highlighted).
