@@ -65,6 +65,9 @@ struct GridColumnSort: SortComparator, Hashable {
 struct RevealToken: Hashable {
     let grid: ObjectIdentifier
     let count: Int
+    /// Whether the requested row exists yet. MetalUI drops a `scrollTo` past the row count, so a reveal into a count
+    /// that is still the placeholder must run again when the real one lands.
+    let reachable: Bool
 }
 
 /// The table: a frozen row-number column, then one column per source column, over `GridModel.rows`.
@@ -132,7 +135,9 @@ struct GridTable: Component, Equatable {
         // The grid asks to show a cell (a follow, Back): the proxy is only reachable here.
         // The token names the grid as well as the count: this table sits in one place for every relation, and a
         // count alone is equal across two grids. `initial` covers a table that was just mounted (Structure and back).
-        .onChange(of: RevealToken(grid: ObjectIdentifier(grid), count: grid.revealCount), initial: true) {
+        .onChange(of: RevealToken(
+            grid: ObjectIdentifier(grid), count: grid.revealCount,
+            reachable: grid.revealRequest.map { $0.row < grid.count.value } ?? false), initial: true) {
             guard let p = grid.revealRequest, grid.activePosition == p else { return }
             proxy.scrollTo(TableCell(row: p.row, column: p.column + 1), anchor: .center)
         }

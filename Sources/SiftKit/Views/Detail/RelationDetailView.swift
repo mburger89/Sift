@@ -15,6 +15,7 @@ struct RelationDetailView: Component {
                 ConnectionBanner(model: model, key: key)
                 RelationHeader(session: session, relation: relation).equatable()
                 HStack(spacing: Pixels(12)) {
+                    HistoryButtons(model: model).equatable()
                     Picker("Tab", selection: Binding(get: { model.relationTab }, set: { model.relationTab = $0 })) {
                         Text("Rows").tag(RelationTab.rows)
                         Text("Structure").tag(RelationTab.structure)
@@ -49,8 +50,29 @@ struct RelationDetailView: Component {
                 Text(id.name).font(size: 20).accessibilityIdentifier("detail.title")
                 Text(model.sessions[key] == nil ? "Not connected." : "This table is not in the current schema.")
                     .foregroundColor(.secondary)
+                    .accessibilityIdentifier("detail.notice")
             }
             .padding(Edges(all: Pixels(16)))
+        }
+    }
+}
+
+/// ‹ and ›: back and forward through the relations visited. `==` is the model's identity: what the body reads of it
+/// (`canGoBack`, `canGoForward`) is observed on its own, so a refresh or a keystroke in the grid does not rebuild it.
+struct HistoryButtons: Component, Equatable {
+    let model: AppModel
+    nonisolated static func == (l: Self, r: Self) -> Bool { l.model === r.model }
+
+    var content: some ElementGroup {
+        HStack(spacing: Pixels(4)) {
+            Button("‹") { model.goBack() }
+                .disabled(!model.canGoBack)
+                .accessibilityLabel("Back")
+                .accessibilityIdentifier("detail.back")
+            Button("›") { model.goForward() }
+                .disabled(!model.canGoForward)
+                .accessibilityLabel("Forward")
+                .accessibilityIdentifier("detail.forward")
         }
     }
 }

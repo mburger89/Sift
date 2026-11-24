@@ -12,6 +12,10 @@ public func installSiftCommands(on app: App, model: AppModel) {
                 .keyboardShortcut("t")
             Button("Refresh") { Task { @MainActor in await model.refresh() } }
                 .keyboardShortcut("r")
+            Button("Back") { model.goBack() }
+                .keyboardShortcut("[")
+            Button("Forward") { model.goForward() }
+                .keyboardShortcut("]")
         }
     }
 }

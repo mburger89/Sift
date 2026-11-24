@@ -32,8 +32,17 @@ public final class AppModel {
             case .relation?, .schema?: detailMode = .table
             default: break
             }
+            recordPlace()
         }
     }
+    /// Back and forward over the relations visited. Observed: the header's buttons read `canGoBack` and `canGoForward`.
+    private var history = NavigationHistory()
+    public var canGoBack: Bool { history.canGoBack }
+    public var canGoForward: Bool { history.canGoForward }
+    /// The last relation place that was shown, so leaving it can record what the user was looking at.
+    @ObservationIgnored private var currentPlace: NavigationEntry?
+    /// True while `goBack` or `goForward` restores an entry: restoring never pushes.
+    @ObservationIgnored private var restoring = false
     public var detailMode: DetailMode = .table
     /// Which tab a table's detail shows.
     public var relationTab: RelationTab = .rows
@@ -179,6 +188,8 @@ public final class AppModel {
     /// Every change of place that carries a query and a cursor goes through here (history will record it here).
     /// The order matters: `load` clears the cursor, so the reveal comes after it.
     func navigate(to key: ConnectionKey, relation: RelationID, query: GridQuery?, active: GridPosition?) {
+        // The selection does not change on a self-reference (employees.manager_id), so nothing else would record it.
+        if !restoring, selection == .relation(key, relation) { history.push(place(of: key, relation)) }
         select(relation, in: key)
         relationTab = .rows
         guard let grid = sessions[key]?.grid(for: relation) else { return }
@@ -186,6 +197,58 @@ public final class AppModel {
         if let active {
             grid.reveal(active)
             grid.selectedRow = active.row
+        }
+    }
+
+    // MARK: Back and forward
+
+    /// The place of a relation as it is now: its grid's query and cursor, nil where it has no grid yet.
+    func place(of key: ConnectionKey, _ relation: RelationID) -> NavigationEntry {
+        let grid = sessions[key]?.existingGrid(for: relation)
+        return NavigationEntry(key: key, relation: relation, query: grid?.query, active: grid?.activePosition)
+    }
+
+    /// Called as the selection changes: a move to another relation pushes the place being left.
+    private func recordPlace() {
+        if case .relation(let key, let id)? = selection {
+            if let left = currentPlace, (left.key, left.relation) != (key, id), !restoring {
+                history.push(refreshed(left))
+            }
+            currentPlace = place(of: key, id)
+        } else if let left = currentPlace {
+            currentPlace = refreshed(left)
+        }
+    }
+
+    /// An entry as its grid is now; one whose grid is gone stays as it was.
+    private func refreshed(_ entry: NavigationEntry) -> NavigationEntry {
+        sessions[entry.key]?.existingGrid(for: entry.relation) == nil ? entry : place(of: entry.key, entry.relation)
+    }
+
+    private var hereNow: NavigationEntry? {
+        if case .relation(let key, let id)? = selection { return place(of: key, id) }
+        return currentPlace.map(refreshed)
+    }
+
+    public func goBack() {
+        guard let here = hereNow, let entry = history.back(from: here) else { return }
+        restore(entry)
+    }
+
+    public func goForward() {
+        guard let here = hereNow, let entry = history.forward(from: here) else { return }
+        restore(entry)
+    }
+
+    private func restore(_ entry: NavigationEntry) {
+        restoring = true
+        defer { restoring = false }
+        if entry.query != nil {
+            navigate(to: entry.key, relation: entry.relation, query: entry.query, active: entry.active)
+        } else {
+            // Its grid never existed (or is gone): select it, and let the detail say what it can.
+            select(entry.relation, in: entry.key)
+            relationTab = .rows
         }
     }
 

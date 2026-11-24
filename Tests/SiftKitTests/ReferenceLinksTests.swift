@@ -124,7 +124,7 @@ struct ReferenceLinksTests {
         #expect(link.title == "product_id is NULL")
         let both: [SiftValue] = [.int(1), .null, .null]
         let two = try #require(links("shipments").links(row: 0) { both[$0] }.first { $0.outgoing })
-        #expect(two.title == "product_id, order_id is NULL" || two.title == "order_id, product_id is NULL")
+        #expect(two.title == "product_id, order_id is NULL")
     }
 
     @Test func outgoingLinksComeFirstOnARelationWithBothDirections() throws {
