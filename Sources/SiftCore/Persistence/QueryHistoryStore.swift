@@ -1,4 +1,7 @@
 import Foundation
+#if os(Windows)
+import WinSDK
+#endif
 
 /// One run in the history: the SQL, when it ran, how long it took, and what came of it.
 public struct QueryHistoryEntry: Codable, Sendable, Equatable, Identifiable {
@@ -100,11 +103,21 @@ public struct QueryHistoryStore: QueryHistoryStoring {
             #else
             guard fm.createFile(atPath: temporary, contents: data, attributes: [.posixPermissions: 0o600]) else { return }
             #endif
+            #if os(Windows)
+            // swift-corelibs-foundation has not implemented `replaceItemAt` on Windows (it traps); the Win32 call swaps in one step.
+            let swapped = temporary.withCString(encodedAs: UTF16.self) { from in
+                target.withCString(encodedAs: UTF16.self) { to in
+                    MoveFileExW(from, to, DWORD(MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+                }
+            }
+            if !swapped { try? fm.removeItem(atPath: temporary) }
+            #else
             if fm.fileExists(atPath: target) {
                 _ = try fm.replaceItemAt(URL(fileURLWithPath: target), withItemAt: URL(fileURLWithPath: temporary))
             } else {
                 try fm.moveItem(atPath: temporary, toPath: target)
             }
+            #endif
         } catch {
             // A history that cannot be kept is not worth breaking the editor for.
         }
