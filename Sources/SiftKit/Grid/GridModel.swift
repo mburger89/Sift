@@ -43,6 +43,10 @@ public final class GridModel {
     public private(set) var isCountingExactly = false
     /// Bumped once for each page that lands, and for each change of query: what the visible cells depend on.
     public private(set) var pagesVersion = 0
+    /// Bumped by every `reload` (a query change, `load`, a refresh's re-read) and by a rollback: the rows behind every
+    /// position may be other ones. Not bumped when a page lands. What shows one cell's value (the inspector) reads it,
+    /// as its position can stay the same while the value under it changes.
+    public private(set) var lookVersion = 0
     /// The cell cursor, and the selected row. A position's column is -1 for the frozen row-number column.
     public var activePosition: GridPosition?
     public var selectedRow: Int?
@@ -284,6 +288,7 @@ public final class GridModel {
         }
         rejectedFilters = []
         pagesVersion += 1
+        lookVersion += 1
         isLoading = true
         scheduleTurn()
     }
@@ -729,6 +734,7 @@ public final class GridModel {
             self.error = message
             errorIsFilter = narrowedDifferently
             pagesVersion += 1
+            lookVersion += 1
             return pump()
         }
         self.error = message

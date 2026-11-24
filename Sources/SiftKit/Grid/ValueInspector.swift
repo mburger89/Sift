@@ -35,9 +35,10 @@ enum InspectorLimits {
     static let jsonChildren = 200
 }
 
-/// Equatable, so its `content` runs again only when the cell changes or something it read does (the selection, the links,
-/// the page of a value still on its way). Left bare, it is re-evaluated by every layout pass that reaches it, and a frame
-/// that cannot replay (a loading animation running, a quarantined subtree) reaches it whenever a page lands elsewhere.
+/// Equatable, so its `content` runs again only when the cell changes or something it read does (the selection, the
+/// links, the page of a value still on its way, and `lookVersion`: a reload may put another row's value under the same
+/// position). Left bare, it is re-evaluated by every layout pass that reaches it, and a frame that cannot replay (a
+/// loading animation running, a quarantined subtree) reaches it whenever a page lands elsewhere.
 struct InspectorBody: Component, Equatable {
     /// How many times `content` has run, for the cost pins (debug builds only).
     @MainActor static var bodyCount = 0
@@ -60,18 +61,34 @@ struct InspectorBody: Component, Equatable {
                 .accessibilityLabel(column.typeName).accessibilityIdentifier("inspector.type")
             Text(verbatim: "row \(position.row + 1)").font(size: 12).foregroundColor(.secondary)
             Divider()
-            let value = grid.value(row: position.row, column: position.column)
-            // Only a value that is still on its way depends on the pages landing.
-            let _ = value == nil ? grid.pagesVersion : 0
-            ScrollView {
-                InspectorValue(grid: grid, column: column, value: value)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                if grid.selectedRow != nil, grid.links != nil {
-                    ValueInspectorLinks(grid: grid, row: position.row, version: value == nil ? grid.pagesVersion : 0).equatable()
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            InspectorValueSection(grid: grid, position: position, look: grid.lookVersion).equatable()
         }
+    }
+}
+
+/// The value and the links under the header. A component of its own, as `InspectorBody.content` is among the largest
+/// debug frames on Windows (G17). It reads the value and, only while the value is still on its way, `pagesVersion`.
+struct InspectorValueSection: Component, Equatable {
+    let grid: GridModel
+    let position: GridPosition
+    /// `GridModel.lookVersion` when this was made: a reload makes it a new value even at the same position.
+    let look: Int
+    nonisolated static func == (l: Self, r: Self) -> Bool { l.grid === r.grid && l.position == r.position && l.look == r.look }
+
+    var content: some ElementGroup {
+        let grid = grid
+        let column = grid.columns[position.column]
+        let value = grid.value(row: position.row, column: position.column)
+        // Only a value that is still on its way depends on the pages landing.
+        let pages = value == nil ? grid.pagesVersion : 0
+        ScrollView {
+            InspectorValue(grid: grid, column: column, value: value)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+            if grid.selectedRow != nil, grid.links != nil {
+                ValueInspectorLinks(grid: grid, row: position.row, version: pages, look: look).equatable()
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -80,9 +97,14 @@ struct InspectorBody: Component, Equatable {
 struct ValueInspectorLinks: Component, Equatable {
     let grid: GridModel
     let row: Int
-    /// The page version the row's values were read under: a page landing refreshes the titles.
+    /// The page version the row's values were read under while the cell's value was not loaded: a page landing
+    /// refreshes the titles. 0 for a loaded value, which a page landing elsewhere must not rebuild.
     let version: Int
-    nonisolated static func == (l: Self, r: Self) -> Bool { l.grid === r.grid && l.row == r.row && l.version == r.version }
+    /// `GridModel.lookVersion`: a reload may put another row's key values under the same position.
+    let look: Int
+    nonisolated static func == (l: Self, r: Self) -> Bool {
+        l.grid === r.grid && l.row == r.row && l.version == r.version && l.look == r.look
+    }
 
     var content: some ElementGroup {
         let grid = grid

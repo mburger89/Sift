@@ -267,4 +267,34 @@ struct GridChangesViewTests {
         try await refresh(window, model, src, markers: 3)
         #expect(model.count == .estimated(1_000_000), "\(model.count)")
     }
+
+    @Test func theInspectorShowsTheNewValueAfterARefresh() async throws {
+        let src = source(changed: [2])
+        let (_, window, model) = try await open(src)
+        try window.click(GridViewTests().cell(window, 2, 2))
+        try await window.runUntilIdle()
+        #expect(model.activePosition == GridPosition(row: 2, column: 2))
+        #expect(try window.element(identifier: "inspector.value").value == "r2c2")
+        src.setValue(.text("NEW"), row: 2, column: 2)
+        try await refresh(window, model, src, markers: 2)
+        #expect(model.value(row: 2, column: 2) == .text("NEW"))
+        #expect(try GridViewTests().cell(window, 2, 2).value == "changed")
+        #expect(try window.element(identifier: "inspector.value").value == "NEW", "the inspector kept the old value")
+    }
+
+    @Test func aFollowThatLandsOnTheSamePositionUpdatesTheInspector() async throws {
+        let src = source()
+        let (rig, window, model) = try await open(src)
+        try window.click(GridViewTests().cell(window, 0, 0))
+        try await window.runUntilIdle()
+        #expect(model.activePosition == GridPosition(row: 0, column: 0))
+        #expect(try window.element(identifier: "inspector.value").value == "0")
+        // The follow sorts newest first (the first key, descending): the same position holds another row's value.
+        rig.model.follow(selfFollow(), in: key)
+        try await window.runUntil { model.query.filters.count == 1 && model.cachedPages.contains(0) && !model.isLoading }
+        try await window.runUntilIdle()
+        #expect(model.activePosition == GridPosition(row: 0, column: 0))
+        #expect(model.value(row: 0, column: 0) == .int(49))
+        #expect(try window.element(identifier: "inspector.value").value == "49", "the inspector kept the old value")
+    }
 }
