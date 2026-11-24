@@ -10,7 +10,7 @@
 **Architecture:**
 - **Newest first** is only a sort: `GridQuery.sort` gains an explicit NULLS placement. A pure `RecencyColumns` in `SiftCore` picks the column. The session gives a new grid that sort by default when the column is cheap to sort on.
 - **Changes** use Postgres's `xmin`. Every inserted or updated row version carries the transaction that wrote it.
-  - At each look, the grid takes a *marker*: the first transaction id not yet assigned (`txid_snapshot_xmax(txid_current_snapshot())`).
+  - At each look, the grid takes a *marker*: the oldest transaction id still running (`txid_snapshot_xmin(txid_current_snapshot())`, ruling R6: an xmax marker misses transactions open at the marker).
   - The next Refresh asks the pager to add a hidden per-row flag, `age(xmin) BETWEEN 0 AND age(marker)`. It can also filter to the flagged rows.
   - The model compares a flagged row with the values it held for the same key before the refresh, to find the changed cells.
 - **Following keys** is pure filtering. Following `orders.customer_id = 42` opens `customers` with the chip `id = 42`, and "referenced by" opens `orders` with `customer_id = 42`. Both reuse phase 3's bound, cast filters, so nothing new reaches SQL. `AppModel` keeps a back and forward history of the relations visited, with each grid's query and active cell.
@@ -86,7 +86,7 @@ The cell-mode contracts are in `../MetalUI/docs/superpowers/specs/2026-11-20-tab
 - **Toolbar:** a "Newest first" toggle button (`grid.newest`). When there is more than one candidate, it is followed by a picker of the candidates (`grid.newest.column`). A header-click sort turns the toggle off because the sort no longer matches. Turning it off sets `sort = nil`.
 
 **Changes since the last look**
-- **Marker:** `SELECT (txid_snapshot_xmax(txid_current_snapshot()) % 4294967296)::text`. This works on every supported server version. It is kept as the decimal text of a 32-bit xid.
+- **Marker:** `SELECT (txid_snapshot_xmin(txid_current_snapshot()) % 4294967296)::text`. This works on every supported server version. It is kept as the decimal text of a 32-bit xid.
   - **Flag:** `age(xmin) BETWEEN 0 AND age($n::xid)` is true for any row version written by a transaction that started at or after the marker.
   - Freezing keeps the raw `xmin`, so a row between 2³¹ and 2³² transactions old has a negative `age(xmin)`. The lower bound `0` keeps those rows unflagged.
 - **When markers are taken:**

@@ -152,7 +152,7 @@ public struct RelationInfo: Sendable, Equatable, Identifiable {
 
 extension RelationInfo {
     /// Whether `other` has the same structure: `kind`, `columns`, `primaryKey`, `uniqueConstraints` and `indexes`.
-    /// `rowEstimate` (it moves with every autovacuum), `oid` and `comment` are ignored. A grid built over a relation
+    /// `rowEstimate` (it moves with every autovacuum), `oid` and the relation's own `comment` are ignored; column comments and defaults are part of `columns`, so changing them still counts. A grid built over a relation
     /// stays valid as long as this holds; its filters, sort and cursor index the columns.
     public func sameStructure(as other: RelationInfo) -> Bool {
         kind == other.kind && columns == other.columns && primaryKey == other.primaryKey
