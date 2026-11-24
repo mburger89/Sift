@@ -179,7 +179,7 @@ public final class AppModel {
     public func follow(_ follow: GridFollow, in key: ConnectionKey) {
         let query = GridQuery(
             sort: sessions[key]?.snapshot?.relation(follow.target).flatMap(RecencyColumns.defaultSort(for:)),
-            filters: follow.filters)
+            filters: follow.filters, changes: sessions[key]?.existingGrid(for: follow.target)?.query.changes)
         navigate(
             to: key, relation: follow.target, query: query,
             active: GridPosition(row: 0, column: follow.targetColumn))

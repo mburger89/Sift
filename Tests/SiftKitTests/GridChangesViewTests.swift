@@ -219,4 +219,52 @@ struct GridChangesViewTests {
         _ = window
         _ = model
     }
+
+    func selfFollow() -> GridFollow {
+        GridFollow(
+            target: orders, filters: [GridFilter(column: 0, op: .eq, value: "2")], title: "orders", targetColumn: 0)
+    }
+
+    @Test func aFollowIntoAHighlightedGridKeepsTheHighlightAndTheBar() async throws {
+        let src = source(changed: [2])
+        let (rig, window, model) = try await open(src)
+        try await refresh(window, model, src, markers: 2)
+        let since = try #require(model.changesSince)
+        rig.model.follow(selfFollow(), in: key)
+        try await window.runUntil { model.query.filters.count == 1 && model.cachedPages.contains(0) && !model.isLoading }
+        try await window.runUntilIdle()
+        #expect(model.query.changes != nil, "the follow dropped the changes")
+        #expect(model.changesSince == since)
+        #expect(window.hasElement(identifier: "grid.changes.since"))
+    }
+
+    @Test func backIntoAGridWhoseChangesWereClearedShowsNeitherAHighlightNorABar() async throws {
+        let src = source(changed: [2])
+        let (rig, window, model) = try await open(src)
+        try await refresh(window, model, src, markers: 2)
+        rig.model.follow(selfFollow(), in: key)
+        try await window.runUntil { model.query.filters.count == 1 && model.cachedPages.contains(0) && !model.isLoading }
+        try window.click(window.element(identifier: "grid.changes.clear"))
+        try await window.runUntil { model.query.changes == nil && model.cachedPages.contains(0) && !model.isLoading }
+        try await window.runUntilIdle()
+        rig.model.goBack()
+        try await window.runUntil { model.query.filters.isEmpty && model.cachedPages.contains(0) && !model.isLoading }
+        try await window.runUntilIdle()
+        #expect(model.query.changes == nil, "Back restored a change filter into a grid with no highlight")
+        #expect(model.changesSince == nil)
+        #expect(!window.hasElement(identifier: "grid.changes.since"))
+        #expect(model.mark(row: 2) == nil)
+    }
+
+    @Test func aRefreshDemotesAnExactCountToAnEstimate() async throws {
+        let src = source(rows: 2000)
+        let (_, window, model) = try await open(src)
+        // The first refresh switches the changes on, which resets the count; the second is the plain one.
+        try await refresh(window, model, src, markers: 2)
+        model.countExactly()
+        try await window.runUntil { model.count.isExact && !model.isCountingExactly }
+        src.countAnswer = .estimated(1_000_000)
+        try await refresh(window, model, src, markers: 3)
+        #expect(model.count == .estimated(1_000_000), "\(model.count)")
+    }
 }

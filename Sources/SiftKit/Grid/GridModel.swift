@@ -233,7 +233,19 @@ public final class GridModel {
 
     /// Shows `query` even when it equals the current one, dropping the pages. A refresh keeps the cursor and the
     /// selection (`keepSelection`) and asks for the count again (`recount`).
-    private func reload(_ query: GridQuery, keepSelection: Bool, recount: Bool = false) {
+    ///
+    /// **Invariant: `changesSince != nil` exactly when `query.changes != nil`.** The bar and the highlight are one
+    /// thing. A query with no `changes` clears `changesSince` and the key copy; an incoming `changes` is dropped when
+    /// the grid has no `changesSince` (a follow or Back carrying a filter from a look this grid no longer has). Only a
+    /// refresh's own marker starts a look (`startsLook`), and sets `changesSince` right after.
+    private func reload(_ query: GridQuery, keepSelection: Bool, recount: Bool = false, startsLook: Bool = false) {
+        var query = query
+        if query.changes == nil {
+            changesSince = nil
+            keyCopy = [:]
+        } else if changesSince == nil, !startsLook {
+            query.changes = nil
+        }
         retriedMarkerAfterCancel = false
         if inFlight != nil {
             source.cancelCurrent()
@@ -258,6 +270,9 @@ public final class GridModel {
             isCountingExactly = false
         } else if recount {
             countNeeded = true
+            // A refresh's recount may only get an estimate (a big table), which never replaces an exact count: the
+            // exact one from before the refresh is stale, so it stops claiming to be exact.
+            if keepSelection, count.isExact { count = .estimated(count.value) }
         }
         if !keepSelection {
             selectedRow = nil
@@ -594,7 +609,7 @@ public final class GridModel {
         let copy = earlier == nil ? [:] : (pendingKeyCopy ?? [:])
         pendingKeyCopy = nil
         // The reload snapshots the state a rollback goes back to: the marker state is advanced after it.
-        reload(next, keepSelection: true, recount: true)
+        reload(next, keepSelection: true, recount: true, startsLook: true)
         changesSince = earlier == nil ? nil : earlierTime
         keyCopy = copy
         keyCopyServed = false
