@@ -17,17 +17,28 @@ struct NewestControl: Component, Equatable {
                     .accessibilityValue(grid.isNewestFirst ? "on" : "off")
                     .accessibilityIdentifier("grid.newest")
                 if grid.recencyColumns.count > 1 {
-                    Picker(
-                        "Newest by",
-                        selection: Binding(get: { grid.newestColumn ?? 0 }, set: { grid.setNewestColumn($0) })
-                    ) {
-                        ForEach(grid.recencyColumns, id: \.self) { c in
-                            Text(verbatim: grid.columns[c].name).tag(c)
-                        }
-                    }
-                    .accessibilityIdentifier("grid.newest.column")
+                    NewestColumnPicker(grid: grid).equatable()
                 }
             }
+        }
+    }
+}
+
+/// The column "Newest first" sorts by, when there is more than one candidate. A component of its own, as
+/// `DetailModePicker` is: an inline Picker among siblings overflows Windows' 1 MB test stack (G17).
+struct NewestColumnPicker: Component, Equatable {
+    let grid: GridModel
+    nonisolated static func == (l: Self, r: Self) -> Bool { l.grid === r.grid }
+
+    var content: some ElementGroup {
+        let grid = grid
+        if let current = grid.newestColumn ?? grid.recencyColumns.first {
+            Picker("Newest by", selection: Binding(get: { grid.newestColumn ?? current }, set: { grid.setNewestColumn($0) })) {
+                ForEach(grid.recencyColumns, id: \.self) { c in
+                    Text(verbatim: grid.columns[c].name).tag(c)
+                }
+            }
+            .accessibilityIdentifier("grid.newest.column")
         }
     }
 }
@@ -58,9 +69,10 @@ struct ChangesBar: Component, Equatable {
         let _ = Self.countBody()
         let grid = grid
         if let since = grid.changesSince {
+            let text = Self.sinceText(since, in: timeZone)
             HStack(spacing: Pixels(12)) {
-                Text(Self.sinceText(since, in: timeZone)).font(size: 12)
-                    .accessibilityLabel(Self.sinceText(since, in: timeZone))
+                Text(text).font(size: 12)
+                    .accessibilityLabel(text)
                     .accessibilityIdentifier("grid.changes.since")
                 Toggle(
                     "Only changes",

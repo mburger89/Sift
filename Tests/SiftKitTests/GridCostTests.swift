@@ -119,8 +119,7 @@ struct GridCostTests {
         let (rig, window, model) = try await view.openLoaded(source, recordsLayout: false)
         source.setValue(.text("new"), row: 2, column: 1)
         model.refresh()
-        do { try await window.runUntil { model.mark(row: 2) != nil && !model.isLoading && model.cachedPages.contains(0) } }
-        catch { print("DBG", model.mark(row: 2) as Any, model.isLoading, model.cachedPages, source.calls, model.query); throw error }
+        try await window.runUntil { model.mark(row: 2) != nil && !model.isLoading && model.cachedPages.contains(0) }
         try await window.runUntilIdle()
         return (rig, window, model, source)
     }
