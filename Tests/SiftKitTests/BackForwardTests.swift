@@ -311,4 +311,32 @@ struct BackForwardTests {
         try await o.window.runUntilIdle()
         #expect(try o.window.element(identifier: "grid.cell.600.0").visibleFrame.size.height.value > 0)
     }
+
+    @Test func backIntoARecreatedGridWithOtherColumnsOpensItsDefaultQuery() async throws {
+        let o = try await open()
+        let filter = GridFilter(column: 1, op: .eq, value: "x")
+        o.model.navigate(to: key, relation: customers, query: GridQuery(filters: [filter]), active: GridPosition(row: 2, column: 1))
+        let before = try grid(o, customers)
+        try await settle(o, before)
+        o.model.select(orders, in: key)
+        // A column was dropped meanwhile: the schema refresh drops the grid and the next one has other columns.
+        let fake = o.rig.sources[0]
+        var snapshot = fake.schema
+        var relations = snapshot.relations
+        let index = try #require(relations.firstIndex { $0.id == customers })
+        relations[index].columns.remove(at: 0)
+        snapshot = SchemaSnapshot(
+            serverVersion: snapshot.serverVersion, schemas: snapshot.schemas, relations: relations, foreignKeys: snapshot.foreignKeys)
+        fake.schema = snapshot
+        fake.setGrid(FakeGridSource(columns: Array(FollowTests.customerColumns().dropFirst()), trueCount: 400), for: customers)
+        await o.model.sessions[key]?.refreshSchema()
+        #expect(o.model.sessions[key]?.existingGrid(for: customers) == nil)
+        o.model.goBack()
+        #expect(o.model.selection == .relation(key, customers))
+        let after = try grid(o, customers)
+        #expect(after !== before)
+        try await settle(o, after)
+        #expect(after.query.filters.isEmpty, "the old column indexes were applied to the new columns")
+        #expect(after.activePosition == nil)
+    }
 }

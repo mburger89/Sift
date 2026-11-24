@@ -6,12 +6,18 @@ public struct NavigationEntry: Equatable, Sendable {
     public var relation: RelationID
     public var query: GridQuery?
     public var active: GridPosition?
+    /// The names of the grid's columns when the place was taken: the query and the cursor index them. Nil when the
+    /// place has no grid, or the entry was made without them.
+    public var columns: [String]?
 
-    public init(key: ConnectionKey, relation: RelationID, query: GridQuery?, active: GridPosition?) {
+    public init(
+        key: ConnectionKey, relation: RelationID, query: GridQuery?, active: GridPosition?, columns: [String]? = nil
+    ) {
         self.key = key
         self.relation = relation
         self.query = query
         self.active = active
+        self.columns = columns
     }
 }
 

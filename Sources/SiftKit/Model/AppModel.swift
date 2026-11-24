@@ -206,7 +206,9 @@ public final class AppModel {
     /// The place of a relation as it is now: its grid's query and cursor, nil where it has no grid yet.
     func place(of key: ConnectionKey, _ relation: RelationID) -> NavigationEntry {
         let grid = sessions[key]?.existingGrid(for: relation)
-        return NavigationEntry(key: key, relation: relation, query: grid?.query, active: grid?.activePosition)
+        return NavigationEntry(
+            key: key, relation: relation, query: grid?.query, active: grid?.activePosition,
+            columns: grid?.columns.map(\.name))
     }
 
     /// Called as the selection changes: a move to another relation pushes the place being left.
@@ -244,7 +246,10 @@ public final class AppModel {
     private func restore(_ entry: NavigationEntry) {
         restoring = true
         defer { restoring = false }
-        if entry.query != nil {
+        // The query and the cursor index the columns the grid had. A grid made again with other columns (a schema
+        // refresh dropped it) opens its default query instead: the old indexes would filter on the wrong column.
+        let sameColumns = entry.columns.map { $0 == sessions[entry.key]?.grid(for: entry.relation)?.columns.map(\.name) } ?? true
+        if entry.query != nil, sameColumns {
             navigate(to: entry.key, relation: entry.relation, query: entry.query, active: entry.active)
         } else {
             // Its grid never existed (or is gone): select it, and let the detail say what it can.
