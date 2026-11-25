@@ -15,6 +15,7 @@ struct SidebarRow: Component, Equatable {
     nonisolated static func == (lhs: SidebarRow, rhs: SidebarRow) -> Bool { lhs.node == rhs.node }
 
     var content: some ElementGroup {
+        // swiftlint:disable:next redundant_discardable_let - result builder: `_ = x` is not valid
         let _ = Self.countBody()
         HStack(spacing: Pixels(6)) {
             Text(node.title)

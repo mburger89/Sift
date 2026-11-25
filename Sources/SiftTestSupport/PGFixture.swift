@@ -95,7 +95,7 @@ public enum PGFixture {
             """
             INSERT INTO \(s).special VALUES (1, 'a%b'), (2, 'a_b'), (3, 'axb'), (4, 'it''s'), (5, '50%'), (6, 'x\\y'), (7, '$1')
             """,
-            "CREATE VIEW \(s).sleepy AS SELECT x FROM generate_series(1, 1) x, pg_sleep(30)",
+            "CREATE VIEW \(s).sleepy AS SELECT x FROM generate_series(1, 1) x, pg_sleep(30)"
         ]
     }
 
@@ -185,7 +185,7 @@ public enum PGFixture {
             """
             CREATE MATERIALIZED VIEW \(a).customer_totals AS
               SELECT customer_id, sum(total) AS total FROM \(a).orders GROUP BY customer_id
-            """,
+            """
         ]
         let after = ["CREATE TABLE \(a).never_analyzed (id int)"]
         return (before, after)

@@ -22,8 +22,7 @@ enum Placement {
             sizes.append(1)
             while sums.count > 1,
                 sums[sums.count - 2] / Double(sizes[sizes.count - 2])
-                    > sums[sums.count - 1] / Double(sizes[sizes.count - 1])
-            {
+                    > sums[sums.count - 1] / Double(sizes[sizes.count - 1]) {
                 let sum = sums.removeLast()
                 let size = sizes.removeLast()
                 sums[sums.count - 1] += sum

@@ -35,7 +35,7 @@ import Testing
             "CREATE TABLE \(a).follow_ts (at timestamptz PRIMARY KEY)",
             "CREATE TABLE \(a).follow_ts_ref (id serial PRIMARY KEY, at timestamptz REFERENCES \(a).follow_ts)",
             "INSERT INTO \(a).follow_ts VALUES ('2026-03-01 09:00:00.123456+05'), ('2026-03-01 09:00:00.123457+05')",
-            "INSERT INTO \(a).follow_ts_ref (at) VALUES ('2026-03-01 09:00:00.123456+05')",
+            "INSERT INTO \(a).follow_ts_ref (at) VALUES ('2026-03-01 09:00:00.123456+05')"
         ]
     }
 
@@ -60,7 +60,7 @@ import Testing
                 Case(label: "text", table: "follow_text_ref", constraint: "follow_text_ref_k_fkey"),
                 Case(label: "timestamptz", table: "follow_ts_ref", constraint: "follow_ts_ref_at_fkey"),
                 Case(label: "numeric", table: "code_uses", constraint: "code_uses_amount_fkey"),
-                Case(label: "bytea", table: "code_uses", constraint: "code_uses_code_fkey"),
+                Case(label: "bytea", table: "code_uses", constraint: "code_uses_code_fkey")
             ]
             for c in cases {
                 let relation = try #require(snapshot.relation(RelationID(a, c.table)), "\(c.label)")

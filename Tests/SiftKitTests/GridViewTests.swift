@@ -17,7 +17,7 @@ struct GridViewTests {
             ResultColumn(name: "id", typeOID: 20, typeName: "int8"),
             ResultColumn(name: "customer_id", typeOID: 20, typeName: "int8"),
             ResultColumn(name: "status", typeOID: 25, typeName: "text"),
-            ResultColumn(name: "meta", typeOID: 114, typeName: "json"),
+            ResultColumn(name: "meta", typeOID: 114, typeName: "json")
         ]
     }
 
@@ -155,13 +155,13 @@ extension GridViewTests {
         let long = String(repeating: "word ", count: 120)
         let rows: [[SiftValue]] = [
             [.int(1), .int(10), .text(long), .raw("{\"a\": [1, 2], \"b\": {\"c\": null}, \"d\": \"x\"}")],
-            [.int(2), .int(11), .null, .null],
+            [.int(2), .int(11), .null, .null]
         ]
         let columns = [
             ResultColumn(name: "id", typeOID: 20, typeName: "int8"),
             ResultColumn(name: "customer_id", typeOID: 20, typeName: "int8"),
             ResultColumn(name: "status", typeOID: 25, typeName: "text"),
-            ResultColumn(name: "meta", typeOID: 3802, typeName: "jsonb"),
+            ResultColumn(name: "meta", typeOID: 3802, typeName: "jsonb")
         ]
         let source = FakeGridSource(columns: columns, rows: rows)
         let (_, window, _) = try await openLoaded(source)

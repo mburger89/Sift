@@ -28,6 +28,7 @@ struct TableCardView: Component, @MainActor Equatable {
     var identifier: String { "\(idPrefix).\(relation.id.schema).\(relation.id.name)" }
 
     var content: some ElementGroup {
+        // swiftlint:disable:next redundant_discardable_let - result builder: `_ = x` is not valid
         let _ = Self.countBody()
         let size = MapCardMetrics.size(keyColumns: keyColumns)
         let w = Pixels(Float(size.w)), h = Pixels(Float(size.h))

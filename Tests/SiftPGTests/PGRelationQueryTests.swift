@@ -17,7 +17,7 @@ import Testing
             id: RelationID("s", "t"), kind: kind,
             columns: [
                 col("id", "bigint"), col("name", "text", null: true), col("created", "timestamptz"),
-                col("we\"ird", "text", null: true), col("b", "text"),
+                col("we\"ird", "text", null: true), col("b", "text")
             ],
             primaryKey: pk.map { KeyConstraint(name: "t_pkey", columns: $0) }, uniqueConstraints: unique, indexes: indexes)
     }

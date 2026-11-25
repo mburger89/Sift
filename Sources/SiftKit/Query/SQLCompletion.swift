@@ -169,7 +169,7 @@ enum SQLCompletion {
         // Words that end a FROM list; the next relation comes only after a JOIN or the comma of a list.
         let clauseWords: Set<String> = [
             "WHERE", "GROUP", "ORDER", "HAVING", "LIMIT", "OFFSET", "UNION", "INTERSECT", "EXCEPT", "WINDOW", "FETCH", "FOR",
-            "ON", "USING", "RETURNING", "SET", "SELECT", "VALUES",
+            "ON", "USING", "RETURNING", "SET", "SELECT", "VALUES"
         ]
         var i = 0
         var inFromList = false

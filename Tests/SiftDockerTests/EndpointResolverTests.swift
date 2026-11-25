@@ -30,7 +30,7 @@ import Testing
         "/h/.docker/contexts/meta/abc/meta.json":
             #"{"Name":"orbstack","Endpoints":{"docker":{"Host":"unix:///u/.orbstack/run/docker.sock"}}}"#,
         "/h/.docker/contexts/meta/def/meta.json":
-            #"{"Name":"other","Endpoints":{"docker":{"Host":"unix:///other.sock"}}}"#,
+            #"{"Name":"other","Endpoints":{"docker":{"Host":"unix:///other.sock"}}}"#
     ]
 
     @Test func dockerHostIsTheOnlyCandidate() throws {
@@ -60,7 +60,7 @@ import Testing
     @Test func dockerConfigEnvironmentMovesTheConfigDirectory() throws {
         let files = [
             "/cfg/config.json": #"{"currentContext":"moved"}"#,
-            "/cfg/contexts/meta/x/meta.json": #"{"Name":"moved","Endpoints":{"docker":{"Host":"unix:///moved.sock"}}}"#,
+            "/cfg/contexts/meta/x/meta.json": #"{"Name":"moved","Endpoints":{"docker":{"Host":"unix:///moved.sock"}}}"#
         ]
         let found = try DockerEndpointResolver.candidates(in: Self.env(["DOCKER_CONFIG": "/cfg"], files: files))
         #expect(found[0].source == .context("moved"))

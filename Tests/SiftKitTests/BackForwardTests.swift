@@ -20,7 +20,7 @@ struct BackForwardTests {
         [
             ResultColumn(name: "order_id", typeOID: 20, typeName: "int8"),
             ResultColumn(name: "product_id", typeOID: 2950, typeName: "uuid"),
-            ResultColumn(name: "qty", typeOID: 23, typeName: "int4"),
+            ResultColumn(name: "qty", typeOID: 23, typeName: "int4")
         ]
     }
 
@@ -29,14 +29,14 @@ struct BackForwardTests {
             ResultColumn(name: "id", typeOID: 2950, typeName: "uuid"),
             ResultColumn(name: "name", typeOID: 1043, typeName: "varchar"),
             ResultColumn(name: "tags", typeOID: 1009, typeName: "text[]"),
-            ResultColumn(name: "price", typeOID: 1700, typeName: "numeric"),
+            ResultColumn(name: "price", typeOID: 1700, typeName: "numeric")
         ]
     }
 
     static func employeeColumns() -> [ResultColumn] {
         [
             ResultColumn(name: "id", typeOID: 23, typeName: "int4"),
-            ResultColumn(name: "manager_id", typeOID: 23, typeName: "int4"),
+            ResultColumn(name: "manager_id", typeOID: 23, typeName: "int4")
         ]
     }
 

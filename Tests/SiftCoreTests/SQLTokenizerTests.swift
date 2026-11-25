@@ -91,7 +91,7 @@ private func lex(_ text: String, from state: SQLLexState = .normal) -> (tokens: 
 
     @Test func numbersCoverIntegersDecimalsExponentsAndHex() {
         #expect(lex("1 12.5 .5 1e10 2.5E-3 0x1F 1_000").tokens == [
-            "number:1", "number:12.5", "number:.5", "number:1e10", "number:2.5E-3", "number:0x1F", "number:1_000",
+            "number:1", "number:12.5", "number:.5", "number:1e10", "number:2.5E-3", "number:0x1F", "number:1_000"
         ])
         // `.1` is a number even after a name, as in PostgreSQL.
         #expect(lex("t.1").tokens == ["identifier:t", "number:.1"])
@@ -109,7 +109,7 @@ private func lex(_ text: String, from state: SQLLexState = .normal) -> (tokens: 
 
     @Test func punctuationIsCommaSemicolonParensAndDot() {
         #expect(lex("f(a, b);").tokens == [
-            "identifier:f", "punctuation:(", "identifier:a", "punctuation:,", "identifier:b", "punctuation:)", "punctuation:;",
+            "identifier:f", "punctuation:(", "identifier:a", "punctuation:,", "identifier:b", "punctuation:)", "punctuation:;"
         ])
     }
 

@@ -12,7 +12,7 @@ import Testing
     @Test func postgresImageVariantsMatch() {
         for image in [
             "postgres", "postgres:17", "docker.io/library/postgres:16-alpine", "postgis/postgis:16-3.4",
-            "timescale/timescaledb-ha:pg16", "pgvector/pgvector:pg17", "localhost:5000/postgres:17",
+            "timescale/timescaledb-ha:pg16", "pgvector/pgvector:pg17", "localhost:5000/postgres:17"
         ] {
             #expect(PostgresContainerMatcher.isPostgres(image: image, ports: []), "\(image)")
         }

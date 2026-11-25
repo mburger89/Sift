@@ -39,7 +39,6 @@ struct QueryCostTests {
         var toolbar = QueryToolbar.bodyCount
         var table = GridTable.bodyCount
         var gridToolbar = GridToolbar.bodyCount
-        init() {}
     }
 
     @Test func typingInALongBufferCostsOnlyTheEditor() async throws {

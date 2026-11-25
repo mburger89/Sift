@@ -51,6 +51,7 @@ struct QueryToolbar: Component, Equatable {
     nonisolated static func == (l: Self, r: Self) -> Bool { l.model === r.model && l.editor === r.editor }
 
     var content: some ElementGroup {
+        // swiftlint:disable:next redundant_discardable_let - result builder: `_ = x` is not valid
         let _ = Self.countBody()
         let editor = editor
         let model = model
@@ -104,6 +105,7 @@ struct QueryEditorPane: Component, Equatable {
     nonisolated static func == (l: Self, r: Self) -> Bool { l.editor === r.editor }
 
     var content: some ElementGroup {
+        // swiftlint:disable:next redundant_discardable_let - result builder: `_ = x` is not valid
         let _ = Self.countBody()
         let editor = editor
         CodeView(buffer: editor.buffer, decorations: editor.decorations)

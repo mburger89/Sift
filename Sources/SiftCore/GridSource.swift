@@ -147,6 +147,6 @@ extension ResultColumn {
     }
 
     static let unorderedTypes: Set<String> = [
-        "json", "xml", "point", "lseg", "path", "box", "polygon", "line", "circle",
+        "json", "xml", "point", "lseg", "path", "box", "polygon", "line", "circle"
     ]
 }

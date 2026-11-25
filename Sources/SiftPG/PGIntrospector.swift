@@ -14,8 +14,7 @@ public struct PGIntrospector: Sendable {
         var attempt = 1
         while true {
             do { return try await read(schemas: wanted) } catch let e as PGError
-                where attempt < 3 && !e.isConnectionLost && (e.sqlState == "XX000" || e.sqlState == "42P01")
-            { attempt += 1 }
+                where attempt < 3 && !e.isConnectionLost && (e.sqlState == "XX000" || e.sqlState == "42P01") { attempt += 1 }
         }
     }
 

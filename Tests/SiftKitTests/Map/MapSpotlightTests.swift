@@ -26,7 +26,7 @@ struct MapSpotlightTests {
         #expect(rig.map.hovered == orderItems)
         _ = try rig.window.element(identifier: "map.scrim")
         #expect(try spotCards(rig.window) == [
-            "map.spot.shop.order_items", "map.spot.shop.orders", "map.spot.shop.products", "map.spot.shop.shipments",
+            "map.spot.shop.order_items", "map.spot.shop.orders", "map.spot.shop.products", "map.spot.shop.shipments"
         ])
         rig.window.hover(at: Point(x: Pixels(5), y: Pixels(5)))  // the sidebar
         try await rig.window.runUntilIdle()

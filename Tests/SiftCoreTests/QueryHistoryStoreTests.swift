@@ -29,7 +29,7 @@ import Testing
         let all = [
             QueryHistoryEntry(sql: "select 1", ranAt: Date(timeIntervalSince1970: 1_700_000_000), duration: 1.5, rowCount: 7),
             QueryHistoryEntry(sql: "set x = 1", ranAt: Date(timeIntervalSince1970: 1_700_000_100), duration: 0.01, affected: 3),
-            QueryHistoryEntry(sql: "select ,,", ranAt: Date(timeIntervalSince1970: 1_700_000_200), duration: 0, error: "syntax error"),
+            QueryHistoryEntry(sql: "select ,,", ranAt: Date(timeIntervalSince1970: 1_700_000_200), duration: 0, error: "syntax error")
         ]
         let store = QueryHistoryStore(directory: dir)
         store.save(identity: "i", entries: all)

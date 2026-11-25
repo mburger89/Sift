@@ -69,7 +69,7 @@ public enum FixtureSnapshot {
             columns: [
                 col("id", 1, "bigint", null: false, def: "nextval('\(a).customers_id_seq'::regclass)"),
                 col("email", 2, "text", null: false),
-                col("created_at", 3, "timestamp with time zone", null: false, def: "now()"),
+                col("created_at", 3, "timestamp with time zone", null: false, def: "now()")
             ],
             pk: ["id"], unique: [KeyConstraint(name: "customers_email_key", columns: ["email"])],
             indexes: [
@@ -81,7 +81,7 @@ public enum FixtureSnapshot {
             "products",
             columns: [
                 col("id", 1, "uuid", null: false), col("name", 2, "character varying(200)", null: false),
-                col("tags", 3, "text[]"), col("price", 4, "numeric(12,2)"),
+                col("tags", 3, "text[]"), col("price", 4, "numeric(12,2)")
             ],
             pk: ["id"],
             indexes: [
@@ -96,7 +96,7 @@ public enum FixtureSnapshot {
                 col("customer_id", 2, "bigint", null: false),
                 col("status", 3, "\(a).order_status", null: false, def: "'new'::\(a).order_status", isEnum: true),
                 col("total", 4, "numeric(12,2)"),
-                col("total_cents", 5, "bigint", generated: true),
+                col("total_cents", 5, "bigint", generated: true)
             ],
             pk: ["id"],
             indexes: [
@@ -110,21 +110,21 @@ public enum FixtureSnapshot {
             "order_items",
             columns: [
                 col("order_id", 1, "bigint", null: false), col("product_id", 2, "uuid", null: false),
-                col("qty", 3, "integer", null: false),
+                col("qty", 3, "integer", null: false)
             ],
             pk: ["product_id", "order_id"])
         let shipments = table(
             "shipments",
             columns: [
                 col("id", 1, "integer", null: false, def: "nextval('\(a).shipments_id_seq'::regclass)"),
-                col("order_id", 2, "bigint", null: false), col("product_id", 3, "uuid", null: false),
+                col("order_id", 2, "bigint", null: false), col("product_id", 3, "uuid", null: false)
             ],
             pk: ["id"])
         let employees = table(
             "employees",
             columns: [
                 col("id", 1, "integer", null: false, def: "nextval('\(a).employees_id_seq'::regclass)"),
-                col("manager_id", 2, "integer"),
+                col("manager_id", 2, "integer")
             ],
             pk: ["id"])
         let productTags = table(
@@ -135,7 +135,7 @@ public enum FixtureSnapshot {
             "events", kind: .partitionedTable,
             columns: [
                 col("id", 1, "bigint", null: false), col("customer_id", 2, "bigint"),
-                col("at", 3, "timestamp with time zone", null: false),
+                col("at", 3, "timestamp with time zone", null: false)
             ],
             pk: ["id", "at"])
         let weird = table("Weird \"Name\"", columns: [col("id", 1, "integer", null: false)], pk: ["id"])
@@ -143,7 +143,7 @@ public enum FixtureSnapshot {
             "notes",
             columns: [
                 col("id", 1, "integer", null: false, def: "nextval('\(a).notes_id_seq'::regclass)"),
-                col("body", 2, "text"), col("created_at", 3, "timestamp with time zone"),
+                col("body", 2, "text"), col("created_at", 3, "timestamp with time zone")
             ],
             pk: ["id"])
         let codes = table(
@@ -159,7 +159,7 @@ public enum FixtureSnapshot {
             "code_uses",
             columns: [
                 col("id", 1, "integer", null: false, def: "nextval('\(a).code_uses_id_seq'::regclass)"),
-                col("code", 2, "bytea"), col("amount", 3, "numeric(12,2)"),
+                col("code", 2, "bytea"), col("amount", 3, "numeric(12,2)")
             ],
             pk: ["id"])
         let neverAnalyzed = table(
@@ -181,20 +181,20 @@ public enum FixtureSnapshot {
             fk("employees_manager_id_fkey", "employees", ["manager_id"], to: id("employees"), ["id"]),
             fk("product_tags_product_id_fkey", "product_tags", ["product_id"], to: id("products"), ["id"]),
             fk("product_tags_tag_id_fkey", "product_tags", ["tag_id"], to: RelationID(b, "tags"), ["id"]),
-            fk("events_customer_id_fkey", "events", ["customer_id"], to: id("customers"), ["id"]),
+            fk("events_customer_id_fkey", "events", ["customer_id"], to: id("customers"), ["id"])
         ]
         let pagerForeignKeys =
             withPagerTables
             ? [
                 fk("code_uses_code_fkey", "code_uses", ["code"], to: id("codes"), ["code"]),
-                fk("code_uses_amount_fkey", "code_uses", ["amount"], to: id("codes"), ["amount"]),
+                fk("code_uses_amount_fkey", "code_uses", ["amount"], to: id("codes"), ["amount"])
             ] : []
         return SchemaSnapshot(
             serverVersion: 170000, schemas: [a, b],
             relations: [
-                tags, customers, products, orders, orderItems, shipments, employees, productTags, events, weird,
+                tags, customers, products, orders, orderItems, shipments, employees, productTags, events, weird
                 ] + pagerTables + [
-                neverAnalyzed, recentOrders, customerTotals,
+                neverAnalyzed, recentOrders, customerTotals
             ],
             foreignKeys: foreignKeys + pagerForeignKeys)
     }

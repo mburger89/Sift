@@ -21,7 +21,7 @@ private func database(extra: [RelationInfo] = []) -> SchemaSnapshot {
             table("public", "bonus", [column("amount", 1, "numeric")]),
             table("public", "Weird Name", [column("id", 1, "integer")]),
             table("public", "order", [column("id", 1, "integer")]),
-            table("sales", "invoices", [column("id", 1, "integer"), column("user_id", 2, "integer")]),
+            table("sales", "invoices", [column("id", 1, "integer"), column("user_id", 2, "integer")])
         ] + extra,
         foreignKeys: [])
 }

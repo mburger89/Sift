@@ -11,6 +11,7 @@ struct ValueInspector: Component, Equatable {
     nonisolated static func == (l: Self, r: Self) -> Bool { l.grid === r.grid }
 
     var content: some ElementGroup {
+        // swiftlint:disable:next redundant_discardable_let - result builder: `_ = x` is not valid
         let _ = Self.countBody()
         let grid = grid
         VStack(alignment: .leading, spacing: Pixels(8)) {
@@ -48,6 +49,7 @@ struct InspectorBody: Component, Equatable {
     nonisolated static func == (l: Self, r: Self) -> Bool { l.grid === r.grid && l.position == r.position }
 
     var content: some ElementGroup {
+        // swiftlint:disable:next redundant_discardable_let - result builder: `_ = x` is not valid
         let _ = Self.countBody()
         let grid = grid
         if position.column < 0 {
@@ -154,7 +156,7 @@ struct InspectorValue: Component {
                 .accessibilityLabel("null").accessibilityIdentifier("inspector.value")
         case .some(let value):
             let raw = CellFormat.rawText(value)
-            if (column.typeName == "jsonb" || column.typeName == "json"), let tree = JSONNode.parse(raw) {
+            if column.typeName == "jsonb" || column.typeName == "json", let tree = JSONNode.parse(raw) {
                 VStack(alignment: .leading, spacing: Pixels(2)) {
                     JSONNodeView(node: tree, key: nil, path: "")
                 }

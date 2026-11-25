@@ -23,7 +23,7 @@ import Testing
                 Self.col("id", "integer", def: "nextval('t_id_seq'::regclass)"),
                 Self.col("seen", "timestamp with time zone", def: "now()"),
                 Self.col("updated_at", "timestamp with time zone"),
-                Self.col("created_at", "timestamp with time zone"),
+                Self.col("created_at", "timestamp with time zone")
             ], pk: ["id"])
         #expect(RecencyColumns.candidates(for: relation) == [3, 2, 1, 0])
     }
@@ -33,7 +33,7 @@ import Testing
             Self.col("Created_At", "text"),
             Self.col("Inserted_At", "timestamp without time zone"),
             Self.col("LAST_MODIFIED", "date"),
-            Self.col("created", "timestamptz"),
+            Self.col("created", "timestamptz")
         ])
         #expect(RecencyColumns.candidates(for: relation) == [1, 3, 2])
     }
@@ -44,7 +44,7 @@ import Testing
                 Self.col("a", "bigint", identity: .byDefault),
                 Self.col("b", "integer", def: "nextval('x'::regclass)"),
                 Self.col("c", "smallint"),
-                Self.col("d", "text", def: "nextval('y'::regclass)"),
+                Self.col("d", "text", def: "nextval('y'::regclass)")
             ], pk: ["b"])
         #expect(RecencyColumns.candidates(for: relation) == [1, 0])
     }
@@ -58,7 +58,7 @@ import Testing
     static func created(null: Bool, type: String = "timestamptz") -> [ColumnInfo] {
         [
             Self.col("id", "bigint"),
-            ColumnInfo(name: "created_at", ordinal: 2, typeName: type, isNullable: null),
+            ColumnInfo(name: "created_at", ordinal: 2, typeName: type, isNullable: null)
         ]
     }
 
@@ -108,7 +108,7 @@ import Testing
         let relation = Self.relation(
             [
                 ColumnInfo(name: "id", ordinal: 1, typeName: "bigint", isNullable: false, defaultExpression: "nextval('t_id_seq'::regclass)"),
-                ColumnInfo(name: "created_at", ordinal: 2, typeName: "timestamp with time zone", isNullable: false, defaultExpression: "now()"),
+                ColumnInfo(name: "created_at", ordinal: 2, typeName: "timestamp with time zone", isNullable: false, defaultExpression: "now()")
             ], pk: ["id"], estimate: .estimated(5_000_000))
         #expect(RecencyColumns.candidates(for: relation) == [1, 0])
         #expect(RecencyColumns.defaultColumn(for: relation) == 0)

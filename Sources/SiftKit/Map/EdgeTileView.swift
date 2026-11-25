@@ -13,6 +13,7 @@ struct EdgeTileView: Component, @MainActor Equatable {
     @MainActor static var bodyCount = 0
 
     var content: some ElementGroup {
+        // swiftlint:disable:next redundant_discardable_let - result builder: `_ = x` is not valid
         let _ = Self.countBody()
         let ox = Double(tile.x) * tileSize, oy = Double(tile.y) * tileSize
         let path = Path { p in

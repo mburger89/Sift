@@ -50,7 +50,7 @@ struct ReferenceLinksTests {
         #expect(
             follow.filters == [
                 GridFilter(column: column("order_items", "product_id"), op: .eq, value: "p-1"),
-                GridFilter(column: column("order_items", "order_id"), op: .eq, value: "5"),
+                GridFilter(column: column("order_items", "order_id"), op: .eq, value: "5")
             ])
     }
 
@@ -101,11 +101,11 @@ struct ReferenceLinksTests {
             relations: [
                 RelationInfo(id: id("a"), kind: .table, columns: [ColumnInfo(name: "x", ordinal: 1, typeName: "integer")]),
                 RelationInfo(id: id("b"), kind: .table, columns: [ColumnInfo(name: "x", ordinal: 1, typeName: "integer")]),
-                RelationInfo(id: id("c"), kind: .table, columns: [ColumnInfo(name: "x", ordinal: 1, typeName: "integer")]),
+                RelationInfo(id: id("c"), kind: .table, columns: [ColumnInfo(name: "x", ordinal: 1, typeName: "integer")])
             ],
             foreignKeys: [
                 ForeignKeyInfo(name: "ab", from: id("a"), fromColumns: ["x"], to: id("b"), toColumns: ["x"]),
-                ForeignKeyInfo(name: "ac", from: id("a"), fromColumns: ["x"], to: id("c"), toColumns: ["x"]),
+                ForeignKeyInfo(name: "ac", from: id("a"), fromColumns: ["x"], to: id("c"), toColumns: ["x"])
             ])
         #expect(GridLinks(snapshot: two, relation: id("a")).primaryFollow(row: 0, column: 0) { _ in .int(1) } == nil)
     }

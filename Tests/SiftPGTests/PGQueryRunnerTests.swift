@@ -98,7 +98,7 @@ import Testing
                 "INSERT INTO \(schema).sparse VALUES (5000, 1)",
                 "DELETE FROM \(schema).sparse",
                 // A data-modifying WITH is refused as a cursor (0A000), then runs plainly and meets the read-only rule.
-                "WITH d AS (DELETE FROM \(schema).sparse RETURNING id) SELECT * FROM d",
+                "WITH d AS (DELETE FROM \(schema).sparse RETURNING id) SELECT * FROM d"
             ] {
                 let f = try #require(Self.failure(await runner.run(sql, statementTimeout: "60s")), "\(sql)")
                 #expect(f.sqlState == QueryFailure.readOnlyViolation, "\(sql) gave \(f.sqlState ?? "nil")")
@@ -256,7 +256,7 @@ import Testing
                         GridQuery(filters: [GridFilter(column: k, op: .gt, value: "90")]),
                         GridQuery(filters: [GridFilter(column: k, op: .isNull)]),
                         GridQuery(filters: [GridFilter(column: k, op: .le, value: "3"), GridFilter(column: 0, op: .ge, value: "100")]),
-                        GridQuery(sort: GridSort(column: k, ascending: false), search: "99"),
+                        GridQuery(sort: GridSort(column: k, ascending: false), search: "99")
                     ]
                     : [
                         GridQuery(),
@@ -266,7 +266,7 @@ import Testing
                         GridQuery(filters: [GridFilter(column: 1, op: .contains, value: "\\")]),
                         GridQuery(filters: [GridFilter(column: 1, op: .contains, value: "'")]),
                         GridQuery(search: "$1"),
-                        GridQuery(sort: GridSort(column: 1, ascending: true)),
+                        GridQuery(sort: GridSort(column: 1, ascending: true))
                     ]
                 for query in queries {
                     let want = try await pager.page(0, size: 500, query: query, after: nil)

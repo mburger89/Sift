@@ -6,7 +6,7 @@ public enum RecencyColumns {
     private static let createdNames = ["created_at", "inserted_at", "created", "created_on", "creation_time", "createdat"]
     private static let updatedNames = ["updated_at", "modified_at", "updated", "modified", "last_modified", "updatedat"]
     private static let timestampTypes: Set<String> = [
-        "timestamp with time zone", "timestamp without time zone", "timestamptz", "timestamp", "date",
+        "timestamp with time zone", "timestamp without time zone", "timestamptz", "timestamp", "date"
     ]
     private static let integerTypes: Set<String> = ["smallint", "integer", "bigint", "int2", "int4", "int8", "int"]
     private static let clockDefaults = ["now()", "current_timestamp", "clock_timestamp()"]

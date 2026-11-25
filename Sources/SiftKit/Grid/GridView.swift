@@ -84,7 +84,9 @@ struct GridTable: Component, Equatable {
 
     var content: some ElementGroup {
         // The cells read pages through `value(row:column:)`; this read is what redraws them when a page lands.
+        // swiftlint:disable:next redundant_discardable_let - result builder: `_ = x` is not valid
         let _ = Self.countBody()
+        // swiftlint:disable:next redundant_discardable_let - result builder: `_ = x` is not valid
         let _ = grid.pagesVersion
         let grid = grid
         let columns = grid.columns

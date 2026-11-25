@@ -61,6 +61,7 @@ struct MinimapCards: Component, @MainActor Equatable {
     @MainActor static var bodyCount = 0
 
     var content: some ElementGroup {
+        // swiftlint:disable:next redundant_discardable_let - result builder: `_ = x` is not valid
         let _ = Self.countBody()
         if let layout = map.committedLayout {
             let transform = MinimapTransform(bounds: layout.bounds)

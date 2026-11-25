@@ -86,8 +86,7 @@ public final class AppModel {
         // The grid that is showing looks again too (before any await: a shortcut acts on what is on screen now). The
         // map, the Structure tab and the Query tab do not refresh a grid.
         if detailMode == .table, relationTab == .rows, case .relation(let key, let id)? = selection,
-            let grid = sessions[key]?.existingGrid(for: id)
-        {
+            let grid = sessions[key]?.existingGrid(for: id) {
             grid.refresh()
         }
         await refreshDiscovery()

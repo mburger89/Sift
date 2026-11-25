@@ -30,7 +30,7 @@ public enum PGOID {
         // Common array types.
         1000: "bool[]", 1001: "bytea[]", 1005: "int2[]", 1007: "int4[]", 1009: "text[]",
         1014: "bpchar[]", 1015: "varchar[]", 1016: "int8[]", 1021: "float4[]", 1022: "float8[]",
-        1182: "date[]", 1115: "timestamp[]", 1185: "timestamptz[]", 1231: "numeric[]", 2951: "uuid[]", 3807: "jsonb[]",
+        1182: "date[]", 1115: "timestamp[]", 1185: "timestamptz[]", 1231: "numeric[]", 2951: "uuid[]", 3807: "jsonb[]"
     ]
 
     /// The display name of a type OID, or `oid:N` when unknown.
@@ -77,14 +77,14 @@ public enum PGOID {
             "boolean": bool, "bytea": bytea, "name": name, "bigint": int8, "smallint": int2, "integer": int4,
             "text": text, "json": json, "real": float4, "double precision": float8, "character": bpchar,
             "character varying": varchar, "date": date, "timestamp without time zone": timestamp,
-            "timestamp with time zone": timestamptz, "numeric": numeric, "uuid": uuid, "jsonb": jsonb,
+            "timestamp with time zone": timestamptz, "numeric": numeric, "uuid": uuid, "jsonb": jsonb
         ]
         guard let oid = scalars[base] else { return (0, formatted) }
         if !isArray { return (oid, typeName(for: oid)) }
         let arrays: [UInt32: UInt32] = [
             bool: 1000, bytea: 1001, int2: 1005, int4: 1007, text: 1009, bpchar: 1014, varchar: 1015, int8: 1016,
             float4: 1021, float8: 1022, date: 1182, timestamp: 1115, timestamptz: 1185, numeric: 1231, uuid: 2951,
-            jsonb: 3807,
+            jsonb: 3807
         ]
         guard let array = arrays[oid] else { return (0, formatted) }
         return (array, typeName(for: array))

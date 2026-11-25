@@ -18,7 +18,7 @@ import Testing
         try FakeDockerDaemon(routes: [
             "/containers/json?all=1": .init(body: try fixture("containers-list")),
             "/containers/\(idShop)/json": .init(body: try fixture("inspect-postgres16"), chunked: true),
-            "/containers/\(idOld)/json": .init(body: try fixture("inspect-old-db")),
+            "/containers/\(idOld)/json": .init(body: try fixture("inspect-old-db"))
         ])
     }
 
@@ -36,7 +36,7 @@ import Testing
     @Test func aContainerRemovedMidWayIsSkipped() async throws {
         let daemon = try FakeDockerDaemon(routes: [
             "/containers/json?all=1": .init(body: try Self.fixture("containers-list")),
-            "/containers/\(Self.idShop)/json": .init(body: try Self.fixture("inspect-postgres16")),
+            "/containers/\(Self.idShop)/json": .init(body: try Self.fixture("inspect-postgres16"))
         ])
         defer { daemon.stop() }
         let found = try await DockerDiscovery(client: DockerClient(endpoint: daemon.endpoint), engine: .other).listPostgresContainers()
@@ -69,7 +69,7 @@ import Testing
             Issue.record("expected a decoding error")
         } catch {
             #expect(!String(describing: error).contains("s3cret"))
-            #expect(error as? DockerError != nil)
+            #expect(error is DockerError)
         }
     }
 
