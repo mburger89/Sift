@@ -15,6 +15,9 @@ disabled_rules:
   # bodies are only shown. `String(decoding:as:)` never fails; the optional initialisers this rule prefers would only
   # add unwraps.
   - optional_data_string_conversion
+  # MetalUI `content` builders read an observable with `let _ = model.version` to register the dependency. In a result
+  # builder `_ = x` is not a valid statement, so the rule's fix does not compile there.
+  - redundant_discardable_let
 
 identifier_name:
   # Short names are the house style for `==` sides (`l`, `r`), loop indexes and closure parameters.

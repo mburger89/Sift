@@ -92,7 +92,6 @@ struct RelationHeader: Component, Equatable {
     nonisolated static func == (l: Self, r: Self) -> Bool { l.session === r.session && l.relation == r.relation }
 
     var content: some ElementGroup {
-        // swiftlint:disable:next redundant_discardable_let - result builder: `_ = x` is not valid
         let _ = Self.countBody()
         let id = relation.id
         let count = session.exactCounts[id]

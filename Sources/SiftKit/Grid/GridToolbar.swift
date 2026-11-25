@@ -14,7 +14,6 @@ struct GridToolbar: Component, Equatable {
     @FocusState private var searchFocused: Bool
 
     var content: some ElementGroup {
-        // swiftlint:disable:next redundant_discardable_let - result builder: `_ = x` is not valid
         let _ = Self.countBody()
         let grid = grid
         HStack(spacing: Pixels(8)) {
