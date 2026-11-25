@@ -1,0 +1,10 @@
+# Tests read as long, linear scripts, so the size limits are looser here.
+type_body_length:
+  warning: 900
+  error: 1500
+file_length:
+  warning: 1500
+  error: 2500
+function_body_length:
+  warning: 120
+  error: 200
