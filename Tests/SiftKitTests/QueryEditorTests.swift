@@ -101,9 +101,15 @@ struct QueryEditorTests {
         let rig = ModelRig("select 1;\nset x;\nselect 2, 3;\nupdate t;")
         rig.runner.answer { sql in
             switch sql {
-            case "select 1": return .rows(columns: [ResultColumn(name: "a", typeOID: 20, typeName: "int8")], rows: [[.int(1)]], truncated: false)
+            case "select 1":
+                return .rows(columns: [ResultColumn(name: "a", typeOID: 20, typeName: "int8")], rows: [[.int(1)]], truncated: false)
             case "select 2, 3":
-                return .rows(columns: [ResultColumn(name: "x", typeOID: 20, typeName: "int8"), ResultColumn(name: "y", typeOID: 20, typeName: "int8")], rows: [[.int(2), .int(3)], [.int(4), .int(5)]], truncated: false)
+                return .rows(
+                    columns: [
+                        ResultColumn(name: "x", typeOID: 20, typeName: "int8"),
+                        ResultColumn(name: "y", typeOID: 20, typeName: "int8")
+                    ],
+                    rows: [[.int(2), .int(3)], [.int(4), .int(5)]], truncated: false)
             case "set x": return .command(tag: "SET", affected: nil)
             default: return .command(tag: "UPDATE 4", affected: 4)
             }
@@ -276,7 +282,9 @@ struct QueryEditorTests {
 
     @Test func historyRecordsCommandsAndErrors() async throws {
         let rig = ModelRig("set x = 1;\nselect ,,")
-        rig.runner.answer { $0.hasPrefix("set") ? .command(tag: "SET", affected: nil) : .failed(QueryFailure(message: "syntax error", sqlState: "42601")) }
+        rig.runner.answer {
+            $0.hasPrefix("set") ? .command(tag: "SET", affected: nil) : .failed(QueryFailure(message: "syntax error", sqlState: "42601"))
+        }
         rig.editor.runAll()
         try await rig.finish()
         let entries = rig.editor.history

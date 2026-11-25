@@ -4,6 +4,7 @@
 /// order of the input arrays and Swift's per-process hash seed change nothing.
 /// Every stage iterates sorted arrays; dictionaries are used for lookup only.
 public enum LayeredLayout {
+    // swiftlint:disable:next cyclomatic_complexity function_body_length - one sequence of layout stages
     public static func layout(_ graph: LayoutGraph, options: LayoutOptions = .init()) -> LayoutResult {
         let canonical = Canonical(graph)
         let count = canonical.ids.count

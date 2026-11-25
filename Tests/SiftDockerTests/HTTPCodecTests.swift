@@ -6,7 +6,9 @@ import Testing
     static func bytes(_ text: String) -> [UInt8] { Array(text.utf8) }
 
     @Test func requestIsHTTP11WithHostAndClose() {
-        let expected = "GET /containers/json?all=1 HTTP/1.1\r\nHost: docker\r\nUser-Agent: Sift\r\nAccept: application/json\r\nConnection: close\r\n\r\n"
+        let expected =
+            "GET /containers/json?all=1 HTTP/1.1\r\nHost: docker\r\nUser-Agent: Sift\r\nAccept: application/json\r\n"
+            + "Connection: close\r\n\r\n"
         #expect(HTTPCodec.getRequest(path: "/containers/json?all=1") == Self.bytes(expected))
     }
 

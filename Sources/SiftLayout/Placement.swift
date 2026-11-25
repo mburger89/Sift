@@ -40,7 +40,7 @@ enum Placement {
     /// The centre of every node, found by alternating passes over the ranks. Each rank
     /// is first stacked about 0, then aligned to the rank before it (downward) and
     /// to the rank after it (upward), `passes` times.
-    static func assign(
+    static func assign(  // swiftlint:disable:this function_parameter_count - the stage inputs are parallel arrays
         order: [[Int]], heights: [Double], predecessors: [[Int]], successors: [[Int]],
         gap: Double, passes: Int
     ) -> [Double] {

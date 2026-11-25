@@ -3,9 +3,10 @@ import Foundation
 /// A `GridSource` over the rows a query run captured, so the editor's results use the same grid as a table.
 ///
 /// Sort, filter and search run in memory and mean what they mean in `PGRelationPager`: `NULLS LAST` ascending and
-/// `NULLS FIRST` descending, ties in the order the rows came (reversed when descending, as the pager's key tie-break is), a comparison with NULL never matches, `contains` and
-/// `starts with` ignore case, the search looks at every column's text, and a value that is not valid for the column's
-/// type is refused with `22P02`. The ordering is built off the main actor and kept for the query it was built for.
+/// `NULLS FIRST` descending, ties in the order the rows came (reversed when descending, as the pager's key tie-break is),
+/// a comparison with NULL never matches, `contains` and `starts with` ignore case, the search looks at every column's
+/// text, and a value that is not valid for the column's type is refused with `22P02`. The ordering is built off the main
+/// actor and kept for the query it was built for.
 public final class QueryResultSource: GridSource, @unchecked Sendable {
     public let columns: [ResultColumn]
     public let rows: [[SiftValue]]
@@ -153,7 +154,8 @@ public final class QueryResultSource: GridSource, @unchecked Sendable {
             switch type.kind {
             case .number where op.isComparison:
                 guard let number = Decimal(string: operand.trimmingCharacters(in: .whitespaces)) else {
-                    throw SourceError(.server(sqlState: "22P02"), "invalid input syntax for type \(meta?.typeName ?? "number"): \"\(operand)\"")
+                    throw SourceError(
+                        .server(sqlState: "22P02"), "invalid input syntax for type \(meta?.typeName ?? "number"): \"\(operand)\"")
                 }
                 bound = .raw("\(number)")
             case .boolean where op.isComparison:

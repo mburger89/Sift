@@ -36,7 +36,10 @@ public enum PGFixture {
             _ = try? admin.query("DROP SCHEMA IF EXISTS \(names.b) CASCADE")
         }
         for statement in ddl(a: names.a, b: names.b).before { _ = try admin.query(statement) }
-        for table in ["customers", "products", "orders", "order_items", "shipments", "employees", "product_tags", "events", "customer_totals", "\"Weird \"\"Name\"\"\"", "notes", "codes", "code_uses"] {
+        for table in [
+            "customers", "products", "orders", "order_items", "shipments", "employees", "product_tags", "events",
+            "customer_totals", "\"Weird \"\"Name\"\"\"", "notes", "codes", "code_uses"
+        ] {
             _ = try admin.query("ANALYZE \(names.a).\(table)")
         }
         _ = try admin.query("ANALYZE \(names.b).tags")
@@ -100,7 +103,8 @@ public enum PGFixture {
     }
 
     /// The fixture statements, one per element (libpq cannot run several in one parameterised call).
-    public static func ddl(a: String, b: String) -> (before: [String], after: [String]) {
+    public static func ddl(a: String, b: String)  // swiftlint:disable:this function_body_length - flat DDL list
+        -> (before: [String], after: [String]) {
         let before = [
             "CREATE SCHEMA \(a)",
             "CREATE SCHEMA \(b)",

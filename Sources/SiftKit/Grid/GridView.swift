@@ -147,6 +147,7 @@ struct GridTable: Component, Equatable {
     }
 
     @MainActor
+    // swiftlint:disable:next function_parameter_count - positional per-cell inputs, built once per cell
     static func cell(
         _ grid: GridModel, _ columns: [ResultColumn], _ row: GridRowRef, _ c: Int, _ timeZone: TimeZone, _ linkColumns: Set<Int>
     ) -> GridCell {

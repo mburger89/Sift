@@ -71,7 +71,9 @@ struct MinimapCards: Component, @MainActor Equatable {
                     let a = transform.toMinimap(LayoutPoint(x: r.x, y: r.y))
                     p.addRect(Bounds(
                         origin: Point(x: Pixels(Float(a.x)), y: Pixels(Float(a.y))),
-                        size: Size(width: Pixels(Float(max(r.width * transform.scale, 1))), height: Pixels(Float(max(r.height * transform.scale, 1))))))
+                        size: Size(
+                            width: Pixels(Float(max(r.width * transform.scale, 1))),
+                            height: Pixels(Float(max(r.height * transform.scale, 1))))))
                 }
             }
             path.fill(.mapEdge)

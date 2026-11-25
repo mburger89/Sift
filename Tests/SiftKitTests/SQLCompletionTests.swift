@@ -30,7 +30,8 @@ private func database(extra: [RelationInfo] = []) -> SchemaSnapshot {
 private func complete(_ marked: String, _ snapshot: SchemaSnapshot = database()) -> CompletionResult? {
     let caret = marked.range(of: "|")!
     let text = marked.replacingCharacters(in: caret, with: "")
-    return SQLCompletion.complete(text: text, caret: marked.utf8.distance(from: marked.utf8.startIndex, to: caret.lowerBound), snapshot: snapshot)
+    let offset = marked.utf8.distance(from: marked.utf8.startIndex, to: caret.lowerBound)
+    return SQLCompletion.complete(text: text, caret: offset, snapshot: snapshot)
 }
 
 private func names(_ result: CompletionResult?) -> [String] { result?.items.map(\.name) ?? [] }
@@ -280,7 +281,9 @@ struct CompletionViewTests {
         editor.buffer.select(0..<0)
         try await typed(window, "ord")
         // Not vacuous: the list is open over a long buffer, with items.
-        #expect(editor.isCompletionOpen && Array(editor.completionItems.map(\.name).prefix(2)) == ["order_items", "orders"], "\(editor.completionItems.map(\.name))")
+        #expect(
+            editor.isCompletionOpen && Array(editor.completionItems.map(\.name).prefix(2)) == ["order_items", "orders"],
+            "\(editor.completionItems.map(\.name))")
         // Warm.
         try await typed(window, "er")
         let before = QueryCostTests.Bodies()

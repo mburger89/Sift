@@ -104,7 +104,8 @@ enum SQLCompletion {
     static func names(snapshot: SchemaSnapshot) -> [CompletionItem] {
         var items: [CompletionItem] = []
         for relation in snapshot.relations {
-            items.append(CompletionItem(kind: .relation, name: relation.id.name, insertText: insertText(relation.id.name), detail: relation.id.schema))
+            items.append(CompletionItem(
+                kind: .relation, name: relation.id.name, insertText: insertText(relation.id.name), detail: relation.id.schema))
         }
         for schema in snapshot.schemas {
             items.append(CompletionItem(kind: .schema, name: schema, insertText: insertText(schema), detail: "schema"))
@@ -194,7 +195,7 @@ enum SQLCompletion {
 
     /// Reads `name`, `schema.name`, then an optional `AS alias` or `alias`, starting at `index`; records them and returns
     /// where it stopped.
-    private static func readReference(
+    private static func readReference(  // swiftlint:disable:this function_parameter_count - private scanner helper
         _ tokens: [SQLToken], _ start: Int, _ bytes: [UInt8], _ snapshot: SchemaSnapshot, _ scan: inout FromScan,
         isName: (SQLToken) -> Bool, isDot: (SQLToken) -> Bool, word: (SQLToken) -> String
     ) -> Int {
@@ -256,7 +257,9 @@ enum SQLCompletion {
         guard token.range.upperBound <= bytes.count, token.range.count >= 2 else { return false }
         let last = bytes[token.range.upperBound - 1]
         switch token.kind {
-        case .comment: return bytes[token.range.lowerBound + 1] == 0x2A && token.range.count >= 4 && last == 0x2F && bytes[token.range.upperBound - 2] == 0x2A
+        case .comment:
+            return bytes[token.range.lowerBound + 1] == 0x2A && token.range.count >= 4 && last == 0x2F
+                && bytes[token.range.upperBound - 2] == 0x2A
         case .string: return (last == 0x27 || last == 0x24) && token.range.count >= 2
         case .quotedIdentifier: return last == 0x22
         default: return true
@@ -274,7 +277,9 @@ enum SQLCompletion {
     /// The name as it goes into the buffer: bare when the server would read it back as the same name, quoted (through
     /// `PGIdentifier.quote`) when it has capitals, spaces or other characters, or is a keyword.
     static func insertText(_ name: String) -> String {
-        let bare = !name.isEmpty && name.utf8.allSatisfy { ($0 >= 0x61 && $0 <= 0x7A) || $0 == 0x5F || ($0 >= 0x30 && $0 <= 0x39) || $0 == 0x24 }
+        let bare = !name.isEmpty && name.utf8.allSatisfy {
+            ($0 >= 0x61 && $0 <= 0x7A) || $0 == 0x5F || ($0 >= 0x30 && $0 <= 0x39) || $0 == 0x24
+        }
             && !(name.utf8.first.map { $0 >= 0x30 && $0 <= 0x39 || $0 == 0x24 } ?? true)
         return bare && !SQLKeywords.contains(name) ? name : PGIdentifier.quote(name)
     }

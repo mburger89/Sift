@@ -115,7 +115,9 @@ public enum SQLStatements {
                     case .whitespace, .comment: break
                     default:
                         for k in token.range { covered[k] = true }
-                        if token.kind == .punctuation, line[token.range.lowerBound] == 0x3B { semicolons.append(lineStart + token.range.lowerBound) }
+                        if token.kind == .punctuation, line[token.range.lowerBound] == 0x3B {
+                            semicolons.append(lineStart + token.range.lowerBound)
+                        }
                     }
                 }
                 content.append(contentsOf: covered)

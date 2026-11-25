@@ -41,7 +41,8 @@ import Testing
         try await Self.withPager("customers") { pager, relation, names, admin in
             let marker = try await pager.changeMarker()
             _ = try admin.query("INSERT INTO \(names.a).customers (email) VALUES ('new@x.test')")
-            let rows = try await pager.page(0, size: 50, query: GridQuery(changes: ChangeFilter(since: marker, only: false)), after: nil)
+            let rows = try await pager.page(
+                0, size: 50, query: GridQuery(changes: ChangeFilter(since: marker, only: false)), after: nil)
             #expect(rows.allSatisfy { $0.count == relation.columns.count + 1 })
             let flagged = Self.flags(rows)
             #expect(flagged.count == 4)
@@ -55,7 +56,8 @@ import Testing
         try await Self.withPager("customers") { pager, _, names, admin in
             let marker = try await pager.changeMarker()
             _ = try admin.query("UPDATE \(names.a).customers SET email = 'changed@x.test' WHERE id = 1")
-            let rows = try await pager.page(0, size: 50, query: GridQuery(changes: ChangeFilter(since: marker, only: false)), after: nil)
+            let rows = try await pager.page(
+                0, size: 50, query: GridQuery(changes: ChangeFilter(since: marker, only: false)), after: nil)
             #expect(Self.flags(rows).filter(\.changed).map(\.id) == [1])
             #expect(Self.flags(rows).filter { !$0.changed }.map(\.id) == [2, 3])
         }
@@ -73,7 +75,8 @@ import Testing
             do {
                 // A row lock writes xmax, not xmin: it is not a change, and a reader does not wait for it.
                 _ = try locker.query("SELECT * FROM \(names.a).customers WHERE id = 2 FOR UPDATE")
-                let rows = try await pager.page(0, size: 50, query: GridQuery(changes: ChangeFilter(since: marker, only: false)), after: nil)
+                let rows = try await pager.page(
+                    0, size: 50, query: GridQuery(changes: ChangeFilter(since: marker, only: false)), after: nil)
                 #expect(Self.flags(rows).map(\.id) == [1, 2, 3])
                 #expect(Self.flags(rows).filter(\.changed).isEmpty)
                 _ = try locker.query("ROLLBACK")
@@ -98,7 +101,8 @@ import Testing
                 _ = try other.query("INSERT INTO \(names.a).orders (customer_id, total) VALUES (1, 99)")
                 let marker = try await pager.changeMarker()
                 _ = try other.query("COMMIT")
-                let rows = try await pager.page(0, size: 50, query: GridQuery(changes: ChangeFilter(since: marker, only: false)), after: nil)
+                let rows = try await pager.page(
+                    0, size: 50, query: GridQuery(changes: ChangeFilter(since: marker, only: false)), after: nil)
                 let flagged = Self.flags(rows)
                 #expect(flagged.count == 5)
                 #expect(flagged.last?.id == 5)

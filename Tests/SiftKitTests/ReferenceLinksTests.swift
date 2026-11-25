@@ -133,7 +133,9 @@ struct ReferenceLinksTests {
             let all = links(name).links(row: 0) { values[$0] }
             let outCount = all.filter(\.outgoing).count
             #expect(outCount > 0 && outCount < all.count, Comment(rawValue: name))
-            #expect(all.prefix(outCount).allSatisfy(\.outgoing) && all.dropFirst(outCount).allSatisfy { !$0.outgoing }, Comment(rawValue: name))
+            #expect(
+                all.prefix(outCount).allSatisfy(\.outgoing) && all.dropFirst(outCount).allSatisfy { !$0.outgoing },
+                Comment(rawValue: name))
         }
     }
 }

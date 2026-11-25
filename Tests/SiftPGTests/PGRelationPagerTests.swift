@@ -98,7 +98,8 @@ import Testing
     func filtersMatchLiterallyIncludingPercentAndQuote() async throws {
         try await Self.withPager("special") { pager, _, _, _ in
             func matches(_ op: FilterOp, _ value: String) async throws -> [Int64] {
-                Self.ids(try await pager.page(0, size: 500, query: GridQuery(filters: [GridFilter(column: 1, op: op, value: value)]), after: nil))
+                Self.ids(try await pager.page(
+                    0, size: 500, query: GridQuery(filters: [GridFilter(column: 1, op: op, value: value)]), after: nil))
             }
             let v1 = try await matches(.contains, "%")
             #expect(v1 == [1, 5])

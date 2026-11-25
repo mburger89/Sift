@@ -76,7 +76,8 @@ import Testing
                         let follow = link.follow
                     else { continue }
                     checked += 1
-                    try await Self.expectRow(c, follow: follow, from: row, link: link, relation: relation, snapshot: snapshot, params: params)
+                    try await Self.expectRow(
+                        c, follow: follow, from: row, link: link, relation: relation, snapshot: snapshot, params: params)
                     // And back: the referenced row's incoming link finds the row it came from.
                     let target = try #require(snapshot.relation(follow.target))
                     let targetPager = PGRelationPager(connection: try PGConnection(parameters: params), relation: target)
@@ -99,7 +100,7 @@ import Testing
     static func texts(_ row: [SiftValue]) -> [String] { row.map(CellFormat.rawText) }
 
     /// Following `follow` from `row` pages exactly the referenced row, with the value as a parameter.
-    static func expectRow(
+    static func expectRow(  // swiftlint:disable:this function_parameter_count - independent scenario inputs
         _ c: Case, follow: GridFollow, from row: [SiftValue], link: ReferenceLink, relation: RelationInfo,
         snapshot: SchemaSnapshot, params: PGConnectionParameters
     ) async throws {

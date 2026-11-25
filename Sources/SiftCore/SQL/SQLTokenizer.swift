@@ -44,6 +44,8 @@ public enum SQLLineLexer {
         return copy.withUnsafeBufferPointer { lex(bytes: $0, from: state) }
     }
 
+    // swiftlint:disable cyclomatic_complexity - the SQL lexer is one byte-offset state machine reviewed as a unit
+    // swiftlint:disable function_body_length - the SQL lexer is one byte-offset state machine reviewed as a unit
     /// The same, over bytes. The offsets in the tokens are indexes into `b`.
     public static func lex(bytes b: UnsafeBufferPointer<UInt8>, from state: SQLLexState) -> (tokens: [SQLToken], end: SQLLexState) {
         var tokens: [SQLToken] = []
@@ -171,10 +173,14 @@ public enum SQLLineLexer {
         }
         return (tokens, end)
     }
+    // swiftlint:enable cyclomatic_complexity
+    // swiftlint:enable function_body_length
 
     // MARK: Scanners
 
-    private static func scanBlockComment(_ b: UnsafeBufferPointer<UInt8>, from start: Int, depth startDepth: Int) -> (end: Int, depth: Int) {
+    private static func scanBlockComment(
+        _ b: UnsafeBufferPointer<UInt8>, from start: Int, depth startDepth: Int
+    ) -> (end: Int, depth: Int) {
         let n = b.count
         var i = start
         var depth = startDepth

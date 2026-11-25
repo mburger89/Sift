@@ -7,7 +7,7 @@ public enum FixtureSnapshot {
     /// 13 relations (partitions are hidden) and 8 foreign keys. With `withPagerTables`, the three tables the live
     /// fixture also holds for pager tests (`notes`, `codes`, `code_uses`) and their 2 foreign keys: 16 and 10.
     /// The UI tests that lay out the shop leave them out.
-    public static func shop(
+    public static func shop(  // swiftlint:disable:this function_body_length - the fixture snapshot is a flat declaration list
         schemaA: String = "shop", schemaB: String = "tagging", withPagerTables: Bool = false
     ) -> SchemaSnapshot {
         let a = schemaA
@@ -33,7 +33,8 @@ public enum FixtureSnapshot {
             IndexInfo(
                 name: "\(table)_pkey", columns: cols, isUnique: true, isPrimary: true, method: "btree",
                 definition:
-                    "CREATE UNIQUE INDEX \(q("\(table)_pkey")) ON \(only ? "ONLY " : "")\(schema).\(q(table)) USING btree (\(cols.joined(separator: ", ")))"
+                    "CREATE UNIQUE INDEX \(q("\(table)_pkey")) ON \(only ? "ONLY " : "")\(schema).\(q(table))"
+                        + " USING btree (\(cols.joined(separator: ", ")))"
             )
         }
         func table(

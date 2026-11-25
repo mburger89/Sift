@@ -19,7 +19,9 @@ struct MapSpotlightLayer: Component {
                     .offset(x: Pixels(Float(window.x)), y: Pixels(Float(window.y)))
                     .allowsHitTesting(false)
                     .accessibilityIdentifier("map.scrim")
-                SpotEdgesView(pieces: Self.pieces(of: neighbours.edges, in: layout, tileSize: map.edgeTiles.tileSize), width: 2.5 * map.edgeTiles.tileSize / EdgeTiles.base)
+                SpotEdgesView(
+                    pieces: Self.pieces(of: neighbours.edges, in: layout, tileSize: map.edgeTiles.tileSize),
+                    width: 2.5 * map.edgeTiles.tileSize / EdgeTiles.base)
                     .equatable()
                 ForEach(neighbours.nodes, id: \.self) { n in
                     let id = layout.graph.ids[n]
@@ -36,7 +38,9 @@ struct MapSpotlightLayer: Component {
             }
             if let layout, let edgeID = map.selectedEdge, let edge = layout.graph.edgeFK.firstIndex(of: edgeID),
                !layout.selfLoops.contains(edge) {
-                SpotEdgesView(pieces: Self.pieces(of: [edge], in: layout, tileSize: map.edgeTiles.tileSize), width: 3.5 * map.edgeTiles.tileSize / EdgeTiles.base)
+                SpotEdgesView(
+                    pieces: Self.pieces(of: [edge], in: layout, tileSize: map.edgeTiles.tileSize),
+                    width: 3.5 * map.edgeTiles.tileSize / EdgeTiles.base)
                     .equatable()
             }
         }

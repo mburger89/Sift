@@ -128,7 +128,10 @@ struct RelationDetailTests {
         let relation = RelationInfo(id: big, kind: .table, rowEstimate: .estimated(100), columns: columns)
         let snapshot = SchemaSnapshot(serverVersion: 170_000, schemas: ["s"], relations: [relation], foreignKeys: [])
         let page = ResultPage(
-            columns: [ResultColumn(name: "id", typeOID: 20, typeName: "bigint"), ResultColumn(name: "label", typeOID: 25, typeName: "text")],
+            columns: [
+                ResultColumn(name: "id", typeOID: 20, typeName: "bigint"),
+                ResultColumn(name: "label", typeOID: 25, typeName: "text")
+            ],
             rows: (0..<100).map { [.int(Int64($0)), .text("row \($0)")] })
         let rig = Rig(sources: [FakeSource(schema: snapshot, rows: [big: page])])
         let (_, window) = try await open(big, rig: rig, recordsLayout: false, tab: .rows)

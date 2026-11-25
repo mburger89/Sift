@@ -18,6 +18,7 @@ public struct PGIntrospector: Sendable {
         }
     }
 
+    // swiftlint:disable:next function_body_length - the introspector reads the catalogue in one sequence of queries reviewed as a unit
     private func read(schemas wanted: [String]?) async throws -> SchemaSnapshot {
         let version = connection.serverVersion
         guard version >= 120_000 else { throw SourceError(.other, "Postgres 12 or later is needed") }

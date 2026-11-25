@@ -56,12 +56,14 @@ struct CellFormatTests {
         let sample = "2026-11-21 10:00:00+00"
         // The zone's abbreviation is the platform's: `PST` where Foundation has the names (Darwin), `GMT-8` where it
         // has only offsets (swift-corelibs on Linux and Windows).
-        #expect(["2026-11-21 02:00:00 PST", "2026-11-21 02:00:00 GMT-8"].contains(format(.text(sample), "timestamptz", zone: "America/Los_Angeles").text))
+        let winter = format(.text(sample), "timestamptz", zone: "America/Los_Angeles").text
+        #expect(["2026-11-21 02:00:00 PST", "2026-11-21 02:00:00 GMT-8"].contains(winter))
         #expect(format(.text(sample), "timestamptz", zone: "UTC").text.hasPrefix("2026-11-21 10:00:00 "))
         // An offset in the text moves the instant, and fractions are dropped.
         #expect(format(.text("2026-11-21 10:00:00.123456+05:30"), "timestamptz", zone: "UTC").text.hasPrefix("2026-11-21 04:30:00 "))
         // Summer time, and a date across midnight.
-        #expect(["2026-06-30 20:00:00 PDT", "2026-06-30 20:00:00 GMT-7"].contains(format(.text("2026-07-01 03:00:00+00"), "timestamptz", zone: "America/Los_Angeles").text))
+        let summer = format(.text("2026-07-01 03:00:00+00"), "timestamptz", zone: "America/Los_Angeles").text
+        #expect(["2026-06-30 20:00:00 PDT", "2026-06-30 20:00:00 GMT-7"].contains(summer))
         // What is not a timestamp stays as it is.
         #expect(format(.text("infinity"), "timestamptz").text == "infinity")
     }
