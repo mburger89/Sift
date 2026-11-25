@@ -202,14 +202,14 @@ struct MapEndToEndTests {
             return rig.map.geometry.visibleCanvasRect(rig.map.viewSize!).inset(by: 30).contains(c)
         }!
         let hovered = rig.map.layout!.graph.ids[hubless]
+        let from = try rig.centre(of: hovered)
         allFrames.append(await Work.of(rig) {
-            rig.window.hover(at: try! rig.centre(of: hovered))
+            rig.window.hover(at: from)
             rig.window.tick()
         })
         #expect(rig.map.hovered == hovered)
 
         // Drag one card.
-        let from = try rig.centre(of: hovered)
         allFrames.append(await Work.of(rig) { rig.window.drag(from: from, to: Point(x: from.x + 50, y: from.y + 25), steps: 4) })
         #expect(rig.rig.mapPositions.saves == 1)
 

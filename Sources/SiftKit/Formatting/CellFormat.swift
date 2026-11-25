@@ -37,7 +37,10 @@ public enum CellFormat {
     /// A cell never holds more than this many characters: a megabyte of text is shaped lazily, not here.
     public static let characterLimit = 200
 
-    static let numericTypes: Set<String> = ["int2", "int4", "int8", "float4", "float8", "numeric", "smallint", "integer", "bigint", "real", "double precision", "money", "oid"]
+    static let numericTypes: Set<String> = [
+        "int2", "int4", "int8", "float4", "float8", "numeric", "smallint", "integer", "bigint", "real", "double precision",
+        "money", "oid"
+    ]
     static let textTypes: Set<String> = ["text", "varchar", "bpchar", "name", "char", "character varying", "character", "citext"]
 
     public static func isNumeric(_ column: ResultColumn) -> Bool { numericTypes.contains(column.typeName.lowercased()) }
@@ -194,7 +197,17 @@ public enum CellFormat {
         return era * 146_097 + doe - 719_468
     }
 
-    static func civil(fromEpoch seconds: Int) -> (year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int) {
+    /// A calendar date and time of day, in whatever zone the epoch seconds were shifted into.
+    struct CivilTime: Equatable {
+        var year: Int
+        var month: Int
+        var day: Int
+        var hour: Int
+        var minute: Int
+        var second: Int
+    }
+
+    static func civil(fromEpoch seconds: Int) -> CivilTime {
         var days = seconds / 86_400
         var rest = seconds % 86_400
         if rest < 0 { rest += 86_400; days -= 1 }
@@ -207,7 +220,7 @@ public enum CellFormat {
         let day = doy - (153 * mp + 2) / 5 + 1
         let month = mp < 10 ? mp + 3 : mp - 9
         let year = yoe + era * 400 + (month <= 2 ? 1 : 0)
-        return (year, month, day, rest / 3600, (rest % 3600) / 60, rest % 60)
+        return CivilTime(year: year, month: month, day: day, hour: rest / 3600, minute: (rest % 3600) / 60, second: rest % 60)
     }
 }
 
