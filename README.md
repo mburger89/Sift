@@ -47,3 +47,12 @@ export SIFT_PG_URL=postgresql://postgres:sift@127.0.0.1:55432/postgres
 swift run siftpg-probe     # exits 0 when every decoded value matches
 swift test                 # the integration test is skipped when SIFT_PG_URL is unset
 ```
+
+### Linting
+
+```sh
+brew install swiftlint
+swiftlint lint --strict    # CI runs the same command; every warning fails it
+```
+
+The rules and thresholds are in `.swiftlint.yml`; `Tests/.swiftlint.yml` loosens the size limits for tests. A suppression is a `// swiftlint:disable:next <rule> - <reason>` comment naming one rule and why.
