@@ -32,8 +32,17 @@ public final class AppModel {
             case .relation?, .schema?: detailMode = .table
             default: break
             }
+            recordPlace()
         }
     }
+    /// Back and forward over the relations visited. Observed: the header's buttons read `canGoBack` and `canGoForward`.
+    private var history = NavigationHistory()
+    public var canGoBack: Bool { history.canGoBack }
+    public var canGoForward: Bool { history.canGoForward }
+    /// The last relation place that was shown, so leaving it can record what the user was looking at.
+    @ObservationIgnored private var currentPlace: NavigationEntry?
+    /// True while `goBack` or `goForward` restores an entry: restoring never pushes.
+    @ObservationIgnored private var restoring = false
     public var detailMode: DetailMode = .table
     /// Which tab a table's detail shows.
     public var relationTab: RelationTab = .rows
@@ -74,6 +83,13 @@ public final class AppModel {
 
     /// Refresh (⌘R): looks for containers again and re-reads the schema of every open connection.
     public func refresh() async {
+        // The grid that is showing looks again too (before any await: a shortcut acts on what is on screen now). The
+        // map, the Structure tab and the Query tab do not refresh a grid.
+        if detailMode == .table, relationTab == .rows, case .relation(let key, let id)? = selection,
+            let grid = sessions[key]?.existingGrid(for: id)
+        {
+            grid.refresh()
+        }
         await refreshDiscovery()
         for session in sessions.values.sorted(by: { $0.title < $1.title }) { await session.refreshSchema() }
     }
@@ -115,15 +131,16 @@ public final class AppModel {
         switch key {
         case .saved(let id):
             guard let connection = connections.first(where: { $0.id == id }) else { return nil }
-            return DatabaseSession(
+            let session = DatabaseSession(
                 key: key, title: connection.name, connector: environment.connector, clock: environment.clock,
                 queryHistory: environment.queryHistory
             ) { _ in
                 .saved(connection, password: environment.credentials.password(for: CredentialKey(connectionID: id)))
             }
+            return wired(session, key)
         case .container(let name):
             guard let database = discovered.first(where: { $0.containerName == name }) else { return nil }
-            return DatabaseSession(
+            let session = DatabaseSession(
                 key: key, title: name, connector: environment.connector, clock: environment.clock,
                 queryHistory: environment.queryHistory
             ) { refreshing in
@@ -135,7 +152,13 @@ public final class AppModel {
                 }
                 return .discovered(fresh)
             }
+            return wired(session, key)
         }
+    }
+
+    private func wired(_ session: DatabaseSession, _ key: ConnectionKey) -> DatabaseSession {
+        session.onFollow = { [weak self] follow in self?.follow(follow, in: key) }
+        return session
     }
 
     /// The selected relation, looked up by name in the session's **current** snapshot (never by OID).
@@ -147,6 +170,92 @@ public final class AppModel {
     /// Selects a relation (a foreign key navigates here). The sidebar does not reveal the row (gap G4).
     public func select(_ relation: RelationID, in key: ConnectionKey) {
         selection = .relation(key, relation)
+    }
+
+    // MARK: Following keys
+
+    /// Opens the rows a followed key leads to: the target's grid, newest first where it has a recency key, filtered
+    /// to the referenced (or referencing) rows, with the cursor on the first of them.
+    public func follow(_ follow: GridFollow, in key: ConnectionKey) {
+        let query = GridQuery(
+            sort: sessions[key]?.snapshot?.relation(follow.target).flatMap(RecencyColumns.defaultSort(for:)),
+            filters: follow.filters, changes: sessions[key]?.existingGrid(for: follow.target)?.query.changes)
+        navigate(
+            to: key, relation: follow.target, query: query,
+            active: GridPosition(row: 0, column: follow.targetColumn))
+    }
+
+    /// Every change of place that carries a query and a cursor goes through here. History is recorded in `selection`'s
+    /// `didSet`, and here only for a navigate onto the relation that is shown (the selection does not change then).
+    /// The order matters: `load` clears the cursor, so the reveal comes after it.
+    func navigate(to key: ConnectionKey, relation: RelationID, query: GridQuery?, active: GridPosition?) {
+        // The selection does not change on any navigate onto the shown relation (employees.manager_id), so nothing else records it.
+        if !restoring, selection == .relation(key, relation) { history.push(place(of: key, relation)) }
+        select(relation, in: key)
+        relationTab = .rows
+        guard let grid = sessions[key]?.grid(for: relation) else { return }
+        if let query { grid.load(query) }
+        if let active {
+            grid.reveal(active)
+            grid.selectedRow = active.row
+        }
+    }
+
+    // MARK: Back and forward
+
+    /// The place of a relation as it is now: its grid's query and cursor, nil where it has no grid yet.
+    func place(of key: ConnectionKey, _ relation: RelationID) -> NavigationEntry {
+        let grid = sessions[key]?.existingGrid(for: relation)
+        return NavigationEntry(
+            key: key, relation: relation, query: grid?.query, active: grid?.activePosition,
+            columns: grid?.columns.map(\.name))
+    }
+
+    /// Called as the selection changes: a move to another relation pushes the place being left.
+    private func recordPlace() {
+        if case .relation(let key, let id)? = selection {
+            if let left = currentPlace, (left.key, left.relation) != (key, id), !restoring {
+                history.push(refreshed(left))
+            }
+            currentPlace = place(of: key, id)
+        } else if let left = currentPlace {
+            currentPlace = refreshed(left)
+        }
+    }
+
+    /// An entry as its grid is now; one whose grid is gone stays as it was.
+    private func refreshed(_ entry: NavigationEntry) -> NavigationEntry {
+        sessions[entry.key]?.existingGrid(for: entry.relation) == nil ? entry : place(of: entry.key, entry.relation)
+    }
+
+    private var hereNow: NavigationEntry? {
+        if case .relation(let key, let id)? = selection { return place(of: key, id) }
+        return currentPlace.map(refreshed)
+    }
+
+    public func goBack() {
+        guard let here = hereNow, let entry = history.back(from: here) else { return }
+        restore(entry)
+    }
+
+    public func goForward() {
+        guard let here = hereNow, let entry = history.forward(from: here) else { return }
+        restore(entry)
+    }
+
+    private func restore(_ entry: NavigationEntry) {
+        restoring = true
+        defer { restoring = false }
+        // The query and the cursor index the columns the grid had. A grid made again with other columns (a schema
+        // refresh dropped it) opens its default query instead: the old indexes would filter on the wrong column.
+        let sameColumns = entry.columns.map { $0 == sessions[entry.key]?.grid(for: entry.relation)?.columns.map(\.name) } ?? true
+        if entry.query != nil, sameColumns {
+            navigate(to: entry.key, relation: entry.relation, query: entry.query, active: entry.active)
+        } else {
+            // Its grid never existed (or is gone): select it, and let the detail say what it can.
+            select(entry.relation, in: entry.key)
+            relationTab = .rows
+        }
     }
 
     // MARK: The map

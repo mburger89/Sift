@@ -13,8 +13,9 @@ struct RelationDetailView: Component {
         if let session = model.sessions[key], let relation = session.snapshot?.relation(id) {
             VStack(alignment: .leading, spacing: 0) {
                 ConnectionBanner(model: model, key: key)
-                RelationHeader(session: session, relation: relation)
+                RelationHeader(session: session, relation: relation).equatable()
                 HStack(spacing: Pixels(12)) {
+                    HistoryButtons(model: model).equatable()
                     Picker("Tab", selection: Binding(get: { model.relationTab }, set: { model.relationTab = $0 })) {
                         Text("Rows").tag(RelationTab.rows)
                         Text("Structure").tag(RelationTab.structure)
@@ -46,21 +47,52 @@ struct RelationDetailView: Component {
         } else {
             VStack(alignment: .leading, spacing: Pixels(8)) {
                 ConnectionBanner(model: model, key: key)
+                HistoryButtons(model: model).equatable()
                 Text(id.name).font(size: 20).accessibilityIdentifier("detail.title")
                 Text(model.sessions[key] == nil ? "Not connected." : "This table is not in the current schema.")
                     .foregroundColor(.secondary)
+                    .accessibilityIdentifier("detail.notice")
             }
             .padding(Edges(all: Pixels(16)))
         }
     }
 }
 
-/// The name, kind, the read-only badge, and the row count with its button.
-struct RelationHeader: Component {
-    let session: DatabaseSession
-    let relation: RelationInfo
+/// ‹ and ›: back and forward through the relations visited. `==` is the model's identity: what the body reads of it
+/// (`canGoBack`, `canGoForward`) is observed on its own, so a refresh or a keystroke in the grid does not rebuild it.
+struct HistoryButtons: Component, Equatable {
+    let model: AppModel
+    nonisolated static func == (l: Self, r: Self) -> Bool { l.model === r.model }
 
     var content: some ElementGroup {
+        HStack(spacing: Pixels(4)) {
+            Button("‹") { model.goBack() }
+                .disabled(!model.canGoBack)
+                .accessibilityLabel("Back")
+                .accessibilityIdentifier("detail.back")
+            Button("›") { model.goForward() }
+                .disabled(!model.canGoForward)
+                .accessibilityLabel("Forward")
+                .accessibilityIdentifier("detail.forward")
+        }
+    }
+}
+
+/// The name, kind, the read-only badge, and the row count with its button.
+///
+/// **`.equatable()`**: a row selected or a key typed in the grid rebuilt the detail view, and with it this header. `==` is
+/// the session's identity and the relation; what the body reads of the session (the exact count, the read-only badge) is
+/// observed on its own and still rebuilds it.
+struct RelationHeader: Component, Equatable {
+    /// How many times `content` has run, for the cost pins (debug builds only).
+    @MainActor static var bodyCount = 0
+
+    let session: DatabaseSession
+    let relation: RelationInfo
+    nonisolated static func == (l: Self, r: Self) -> Bool { l.session === r.session && l.relation == r.relation }
+
+    var content: some ElementGroup {
+        let _ = Self.countBody()
         let id = relation.id
         let count = session.exactCounts[id]
         VStack(alignment: .leading, spacing: Pixels(6)) {
@@ -94,5 +126,13 @@ struct RelationHeader: Component {
         case .failed(let message)?: return message
         case nil: return relation.rowEstimate.displayText
         }
+    }
+}
+
+extension RelationHeader {
+    @MainActor static func countBody() {
+        #if DEBUG
+        bodyCount += 1
+        #endif
     }
 }

@@ -13,6 +13,8 @@ public final class FakeGridSource: GridSource, @unchecked Sendable {
         case exactCount(GridQuery)
         /// `keyset` is true when the call carried the previous page's last row.
         case page(index: Int, size: Int, query: GridQuery, keyset: Bool)
+        /// `changeMarker()` was asked.
+        case marker
     }
 
     public let columns: [ResultColumn]
@@ -25,6 +27,13 @@ public final class FakeGridSource: GridSource, @unchecked Sendable {
     private var _orderNote: String?
     private var _holdsPages = false
     private var _holdsCounts = false
+    private var _holdsMarkers = false
+    private var _supportsChanges = false
+    private var _keyColumns: [Int] = []
+    private var _markers: [String] = []
+    private var _markerCount = 0
+    private var _changed: Set<Int> = []
+    private var _overrides: [Int: [Int: SiftValue]] = [:]
     private var _trueCount: Int
     private var _countAnswer: RowCount?
     private var _failures: [SourceError] = []
@@ -73,12 +82,35 @@ public final class FakeGridSource: GridSource, @unchecked Sendable {
         get { lock.withLock { _holdsCounts } }
         set { lock.withLock { _holdsCounts = newValue } }
     }
+    public var holdsMarkers: Bool {
+        get { lock.withLock { _holdsMarkers } }
+        set { lock.withLock { _holdsMarkers = newValue } }
+    }
+    public var supportsChanges: Bool {
+        get { lock.withLock { _supportsChanges } }
+        set { lock.withLock { _supportsChanges = newValue } }
+    }
+    public var keyColumns: [Int] {
+        get { lock.withLock { _keyColumns } }
+        set { lock.withLock { _keyColumns = newValue } }
+    }
+    /// The markers the next `changeMarker()` calls answer, in order. When the queue is empty, markers are `m1`, `m2`, ...
+    public func setMarkers(_ markers: [String]) { lock.withLock { _markers = markers } }
+    /// The ordinals (rows of the unsorted data) a read with `changes` flags as changed; with `only`, the only ones returned.
+    public func setChanged(_ ordinals: Set<Int>) { lock.withLock { _changed = ordinals } }
+    /// Makes the row with this ordinal answer `value` in `column` from now on: a row that changed between two looks.
+    public func setValue(_ value: SiftValue, row ordinal: Int, column: Int) {
+        lock.withLock { _overrides[ordinal, default: [:]][column] = value }
+    }
     public func setOrderNote(_ note: String?) { lock.withLock { _orderNote = note } }
     /// The next calls throw these, one each, in order.
     public func failNext(_ errors: [SourceError]) { lock.withLock { _failures.append(contentsOf: errors) } }
     public var calls: [Call] { lock.withLock { _calls } }
     public var cancelCalls: Int { lock.withLock { _cancelCalls } }
     public var isClosed: Bool { lock.withLock { _closed } }
+
+    /// The number of `changeMarker()` calls so far.
+    public var markerCalls: Int { calls.filter { $0 == .marker }.count }
 
     /// The pages asked for, in order.
     public var pageCalls: [(index: Int, query: GridQuery, keyset: Bool)] {
@@ -103,6 +135,7 @@ public final class FakeGridSource: GridSource, @unchecked Sendable {
         let all = lock.withLock { () -> [CheckedContinuation<Void, Never>] in
             _holdsPages = false
             _holdsCounts = false
+            _holdsMarkers = false
             defer { waiting = [:] }
             return Array(waiting.values)
         }
@@ -132,25 +165,54 @@ public final class FakeGridSource: GridSource, @unchecked Sendable {
 
     public func count(for query: GridQuery) async throws -> RowCount {
         _ = try await record(.count(query), holds: holdsCounts)
-        return lock.withLock { _countAnswer ?? .exact(_trueCount) }
+        return lock.withLock {
+            if let only = onlyChanged(query) { return .exact(only.count) }
+            return _countAnswer ?? .exact(_trueCount)
+        }
     }
 
     public func exactCount(for query: GridQuery) async throws -> Int {
         _ = try await record(.exactCount(query), holds: holdsCounts)
-        return lock.withLock { _trueCount }
+        return lock.withLock { onlyChanged(query)?.count ?? _trueCount }
+    }
+
+    public func changeMarker() async throws -> String {
+        _ = try await record(.marker, holds: holdsMarkers)
+        return lock.withLock {
+            _markerCount += 1
+            return _markers.isEmpty ? "m\(_markerCount)" : _markers.removeFirst()
+        }
+    }
+
+    /// The changed ordinals, ascending, when the query keeps only changes on a source that supports them. Under the lock.
+    private func onlyChanged(_ query: GridQuery) -> [Int]? {
+        guard _supportsChanges, query.changes?.only == true else { return nil }
+        return _changed.filter { $0 < _trueCount }.sorted()
     }
 
     public func page(_ index: Int, size: Int, query: GridQuery, after: [SiftValue]?) async throws -> [[SiftValue]] {
         _ = try await record(.page(index: index, size: size, query: query, keyset: after != nil), holds: holdsPages)
-        let (total, fixed) = lock.withLock { (_trueCount, fixedRows) }
+        let (only, total, fixed, flagged, changed, overrides) = lock.withLock {
+            () -> ([Int]?, Int, [[SiftValue]]?, Bool, Set<Int>, [Int: [Int: SiftValue]]) in
+            let only = onlyChanged(query)
+            return (only, only?.count ?? _trueCount, fixedRows, _supportsChanges && query.changes != nil, _changed, _overrides)
+        }
         let start = index * size
         guard start < total else { return [] }
         return (start..<min(start + size, total)).map { position in
-            let ordinal = (query.sort?.ascending == false) ? total - 1 - position : position
-            if let fixed { return fixed[ordinal] }
-            return columns.indices.map { column in
-                column == 0 ? .int(Int64(ordinal)) : .text("r\(ordinal)c\(column)")
+            let sorted = (query.sort?.ascending == false) ? total - 1 - position : position
+            let ordinal = only?[sorted] ?? sorted
+            var row: [SiftValue]
+            if let fixed {
+                row = fixed[ordinal]
+            } else {
+                row = columns.indices.map { column in
+                    column == 0 ? .int(Int64(ordinal)) : .text("r\(ordinal)c\(column)")
+                }
             }
+            for (column, value) in overrides[ordinal] ?? [:] where row.indices.contains(column) { row[column] = value }
+            if flagged { row.append(.bool(changed.contains(ordinal))) }
+            return row
         }
     }
 

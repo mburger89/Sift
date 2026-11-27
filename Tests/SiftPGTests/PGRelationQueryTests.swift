@@ -186,4 +186,76 @@ import Testing
         let (sql, params) = Self.query().countSQL(query: query)
         #expect(!sql.contains("WHERE") && params.isEmpty)
     }
+
+    // MARK: Newest first and changes
+
+    @Test func aDescendingSortCanPutNullsLast() {
+        let query = GridQuery(sort: GridSort(column: 2, ascending: false, nullsLast: true))
+        let (sql, _) = Self.query().pageSQL(index: 0, size: 500, query: query, after: nil)
+        #expect(sql.contains("ORDER BY \"created\" DESC NULLS LAST, \"id\" DESC LIMIT 500"), "\(sql)")
+    }
+
+    @Test func theDefaultNullsPlacementIsUnchanged() {
+        let down = GridQuery(sort: GridSort(column: 1, ascending: false))
+        #expect(Self.query().pageSQL(index: 0, size: 500, query: down, after: nil).sql.contains("ORDER BY \"name\" DESC NULLS FIRST, \"id\" DESC LIMIT 500"))
+        let up = GridQuery(sort: GridSort(column: 2))
+        #expect(Self.query().pageSQL(index: 0, size: 500, query: up, after: nil).sql.contains("ORDER BY \"created\" ASC NULLS LAST, \"id\" LIMIT 500"))
+        let upFirst = GridQuery(sort: GridSort(column: 2, ascending: true, nullsLast: false))
+        #expect(Self.query().pageSQL(index: 0, size: 500, query: upFirst, after: nil).sql.contains("\"created\" ASC NULLS FIRST, \"id\""))
+    }
+
+    @Test func changesAddATrailingFlagAfterCtid() {
+        let query = GridQuery(changes: ChangeFilter(since: "123"))
+        let q = Self.query(Self.relation(pk: nil))
+        let (sql, params) = q.pageSQL(index: 0, size: 500, query: query, after: nil)
+        #expect(sql.contains("ctid::text AS \"_sift_ctid\", age(xmin) BETWEEN 0 AND age($1::xid) AS \"_sift_changed\" FROM"), "\(sql)")
+        #expect(params == ["123"])
+        #expect(!sql.contains("WHERE"))
+        let keyed = Self.query().pageSQL(index: 0, size: 500, query: query, after: nil)
+        #expect(keyed.sql.contains("\"b\", age(xmin) BETWEEN 0 AND age($1::xid) AS \"_sift_changed\" FROM"), "\(keyed.sql)")
+    }
+
+    @Test func onlyChangesAlsoFiltersAndCountsWithTheFlag() {
+        let query = GridQuery(
+            filters: [GridFilter(column: 1, op: .eq, value: "x")], changes: ChangeFilter(since: "123", only: true))
+        #expect(query.narrows)
+        let (sql, params) = Self.query().pageSQL(index: 0, size: 500, query: query, after: nil)
+        #expect(sql.contains("WHERE age(xmin) BETWEEN 0 AND age($1::xid) AND \"name\" = $2::text"), "\(sql)")
+        #expect(params == ["123", "x"])
+        let (count, countParams) = Self.query().countSQL(query: query)
+        #expect(count.contains("WHERE age(xmin) BETWEEN 0 AND age($1::xid) AND \"name\" = $2::text"), "\(count)")
+        #expect(countParams == ["123", "x"])
+        // Without `only` a count carries no marker.
+        let plain = Self.query().countSQL(query: GridQuery(changes: ChangeFilter(since: "123")))
+        #expect(plain.params.isEmpty && !plain.sql.contains("xmin"))
+    }
+
+    @Test func theMarkerIsNeverInTheSQLText() {
+        let query = GridQuery(search: "s", changes: ChangeFilter(since: "1; drop table x", only: true))
+        let page = Self.query().pageSQL(index: 0, size: 500, query: query, after: nil)
+        let count = Self.query().countSQL(query: query)
+        #expect(!page.sql.contains("drop") && !count.sql.contains("drop"))
+        #expect(page.params.contains("1; drop table x") && count.params.contains("1; drop table x"))
+    }
+
+    @Test func keysetStillWorksWithChangesOn() {
+        let after: [SiftValue] = [.int(7), .null, .text("t"), .null, .text("x"), .bool(true)]
+        let query = GridQuery(changes: ChangeFilter(since: "9", only: true))
+        let (sql, params) = Self.query().pageSQL(index: 3, size: 500, query: query, after: after)
+        #expect(sql.contains("WHERE age(xmin) BETWEEN 0 AND age($1::xid) AND \"id\" > $2"), "\(sql)")
+        #expect(params == ["9", "7"])
+        #expect(!sql.contains("OFFSET"))
+    }
+
+    @Test func viewsDoNotSupportChanges() {
+        #expect(Self.query().supportsChanges)
+        #expect(Self.query(Self.relation(kind: .materializedView)).supportsChanges)
+        #expect(Self.query(Self.relation(kind: .partitionedTable)).supportsChanges)
+        #expect(!Self.query(Self.relation(pk: nil, kind: .view)).supportsChanges)
+        #expect(!Self.query(Self.relation(pk: nil, kind: .foreignTable)).supportsChanges)
+        let query = GridQuery(changes: ChangeFilter(since: "1", only: true))
+        let (sql, params) = Self.query(Self.relation(pk: nil, kind: .view)).pageSQL(index: 0, size: 500, query: query, after: nil)
+        #expect(!sql.contains("xmin") && params.isEmpty)
+        #expect(PGRelationQuery.markerSQL == "SELECT (txid_snapshot_xmin(txid_current_snapshot()) % 4294967296)::text")
+    }
 }

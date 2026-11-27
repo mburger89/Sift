@@ -9,10 +9,26 @@ public enum GridPaging {
 public struct GridSort: Sendable, Equatable {
     public var column: Int
     public var ascending: Bool
+    /// Where NULLs go. Defaults to `ascending` (`NULLS LAST` ascending, `NULLS FIRST` descending), which is
+    /// what Postgres does; newest-first sets it to true while descending, so a row with no timestamp is not "newest".
+    public var nullsLast: Bool
 
-    public init(column: Int, ascending: Bool = true) {
+    public init(column: Int, ascending: Bool = true, nullsLast: Bool? = nil) {
         self.column = column
         self.ascending = ascending
+        self.nullsLast = nullsLast ?? ascending
+    }
+}
+
+/// Highlight (and optionally keep only) the rows written since a marker: the decimal text of a 32-bit xid,
+/// taken from `GridSource.changeMarker()`. Always bound as a parameter, never spliced into SQL.
+public struct ChangeFilter: Sendable, Equatable {
+    public var since: String
+    public var only: Bool
+
+    public init(since: String, only: Bool = false) {
+        self.since = since
+        self.only = only
     }
 }
 
@@ -58,15 +74,20 @@ public struct GridQuery: Sendable, Equatable {
     public var sort: GridSort?
     public var filters: [GridFilter]
     public var search: String?
+    /// With it set, each row has one extra trailing `.bool(changed)` value, after `ctid`.
+    /// A source whose `supportsChanges` is false ignores it, so callers gate on `supportsChanges`.
+    public var changes: ChangeFilter?
 
-    public init(sort: GridSort? = nil, filters: [GridFilter] = [], search: String? = nil) {
+    public init(sort: GridSort? = nil, filters: [GridFilter] = [], search: String? = nil, changes: ChangeFilter? = nil) {
         self.sort = sort
         self.filters = filters
         self.search = search
+        self.changes = changes
     }
 
-    /// True when rows are narrowed (filters or a search), so the catalog's estimate no longer applies.
-    public var narrows: Bool { !filters.isEmpty || !(search ?? "").isEmpty }
+    /// True when rows are narrowed (filters, a search or only-changes), so the catalog's estimate no longer applies.
+    /// Only-changes counts even for a source that ignores `changes` (`supportsChanges` false): callers gate on that.
+    public var narrows: Bool { !filters.isEmpty || !(search ?? "").isEmpty || changes?.only == true }
 }
 
 /// A row count, exact or an estimate that grows or shrinks as pages come back.
@@ -97,6 +118,12 @@ public protocol GridSource: AnyObject, Sendable {
     /// `after`: the last row of page index-1 when it is loaded (keyset), else nil (offset).
     func page(_ index: Int, size: Int, query: GridQuery, after: [SiftValue]?) async throws -> [[SiftValue]]
     func cancelCurrent()
+    /// Whether rows can be flagged as changed since a marker (`changes` on a query, `changeMarker()`).
+    var supportsChanges: Bool { get }
+    /// The columns (indexes into `columns`) that identify a row across refreshes. Empty for none or `ctid`.
+    var keyColumns: [Int] { get }
+    /// The marker to pass as `ChangeFilter.since` later. Taken before the pages it is compared against.
+    func changeMarker() async throws -> String
     /// Releases the connection the source holds, if any.
     func close()
 }
@@ -104,6 +131,11 @@ public protocol GridSource: AnyObject, Sendable {
 extension GridSource {
     public var orderNote: String? { nil }
     public func close() {}
+    public var supportsChanges: Bool { false }
+    public var keyColumns: [Int] { [] }
+    public func changeMarker() async throws -> String {
+        throw SourceError(.other, "changes are not supported")
+    }
 }
 
 extension ResultColumn {

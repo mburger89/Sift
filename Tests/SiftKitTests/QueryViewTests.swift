@@ -79,6 +79,9 @@ struct QueryViewTests {
         #expect(try window.element(identifier: "grid.cell.0.0").value == "1")
         #expect(try window.element(identifier: "grid.cell.4.1").value == "n1")
         #expect(try window.element(identifier: "query.status.rows").value == "5 rows in 10 ms")
+        // A result is not a relation's rows: Refresh would only re-read the same captured rows, so there is no button.
+        #expect(window.hasElement(identifier: "grid.toolbar"))
+        #expect(!window.hasElement(identifier: "grid.refresh"))
         // The key did not type a newline.
         #expect(editor.buffer.snapshot().text == "select id, name from t;\nselect 2;")
     }

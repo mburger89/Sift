@@ -15,7 +15,7 @@ struct ValueInspector: Component, Equatable {
         let grid = grid
         VStack(alignment: .leading, spacing: Pixels(8)) {
             if let position = grid.activePosition {
-                InspectorBody(grid: grid, position: position)
+                InspectorBody(grid: grid, position: position).equatable()
             } else {
                 Text("Select a cell to see its value.").font(size: 12).foregroundColor(.secondary)
                     .accessibilityIdentifier("inspector.empty")
@@ -35,11 +35,20 @@ enum InspectorLimits {
     static let jsonChildren = 200
 }
 
-struct InspectorBody: Component {
+/// Equatable, so its `content` runs again only when the cell changes or something it read does (the selection, the
+/// links, the page of a value still on its way, and `lookVersion`: a reload may put another row's value under the same
+/// position). Left bare, it is re-evaluated by every layout pass that reaches it, and a frame that cannot replay (a
+/// loading animation running, a quarantined subtree) reaches it whenever a page lands elsewhere.
+struct InspectorBody: Component, Equatable {
+    /// How many times `content` has run, for the cost pins (debug builds only).
+    @MainActor static var bodyCount = 0
+
     let grid: GridModel
     let position: GridPosition
+    nonisolated static func == (l: Self, r: Self) -> Bool { l.grid === r.grid && l.position == r.position }
 
     var content: some ElementGroup {
+        let _ = Self.countBody()
         let grid = grid
         if position.column < 0 {
             Text("Row").font(size: 12).foregroundColor(.secondary)
@@ -52,15 +61,81 @@ struct InspectorBody: Component {
                 .accessibilityLabel(column.typeName).accessibilityIdentifier("inspector.type")
             Text(verbatim: "row \(position.row + 1)").font(size: 12).foregroundColor(.secondary)
             Divider()
-            let value = grid.value(row: position.row, column: position.column)
-            // Only a value that is still on its way depends on the pages landing.
-            let _ = value == nil ? grid.pagesVersion : 0
-            ScrollView {
-                InspectorValue(grid: grid, column: column, value: value)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            InspectorValueSection(grid: grid, position: position, look: grid.lookVersion).equatable()
         }
+    }
+}
+
+/// The value and the links under the header. A component of its own, as `InspectorBody.content` is among the largest
+/// debug frames on Windows (G17). It reads the value and, only while the value is still on its way, `pagesVersion`.
+struct InspectorValueSection: Component, Equatable {
+    let grid: GridModel
+    let position: GridPosition
+    /// `GridModel.lookVersion` when this was made: a reload makes it a new value even at the same position.
+    let look: Int
+    nonisolated static func == (l: Self, r: Self) -> Bool { l.grid === r.grid && l.position == r.position && l.look == r.look }
+
+    var content: some ElementGroup {
+        let grid = grid
+        let column = grid.columns[position.column]
+        let value = grid.value(row: position.row, column: position.column)
+        // Only a value that is still on its way depends on the pages landing.
+        let pages = value == nil ? grid.pagesVersion : 0
+        ScrollView {
+            InspectorValue(grid: grid, column: column, value: value)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+            if grid.selectedRow != nil, grid.links != nil {
+                ValueInspectorLinks(grid: grid, row: position.row, version: pages, look: look).equatable()
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// The Links section: the foreign keys of the selected row, outgoing first, then "Referenced by". Each is a button that
+/// follows it; a NULL or an unloaded value disables its link and says why.
+struct ValueInspectorLinks: Component, Equatable {
+    let grid: GridModel
+    let row: Int
+    /// The page version the row's values were read under while the cell's value was not loaded: a page landing
+    /// refreshes the titles. 0 for a loaded value, which a page landing elsewhere must not rebuild.
+    let version: Int
+    /// `GridModel.lookVersion`: a reload may put another row's key values under the same position.
+    let look: Int
+    nonisolated static func == (l: Self, r: Self) -> Bool {
+        l.grid === r.grid && l.row == r.row && l.version == r.version && l.look == r.look
+    }
+
+    var content: some ElementGroup {
+        let grid = grid
+        let row = row
+        let links = grid.links?.links(row: row) { grid.value(row: row, column: $0) } ?? []
+        let outgoing = links.filter(\.outgoing)
+        let incoming = links.filter { !$0.outgoing }
+        if !links.isEmpty {
+            Divider()
+            Text("Links").font(size: 12).foregroundColor(.secondary).accessibilityIdentifier("inspector.links")
+            for link in outgoing { InspectorLinkButton(grid: grid, link: link).equatable() }
+            if !incoming.isEmpty {
+                Text("Referenced by").font(size: 12).foregroundColor(.secondary)
+                for link in incoming { InspectorLinkButton(grid: grid, link: link).equatable() }
+            }
+        }
+    }
+}
+
+/// One link as a button. Its own component, so a page landing rebuilds only the links whose title changed.
+struct InspectorLinkButton: Component, Equatable {
+    let grid: GridModel
+    let link: ReferenceLink
+    nonisolated static func == (l: Self, r: Self) -> Bool { l.grid === r.grid && l.link == r.link }
+
+    var content: some ElementGroup {
+        let grid = grid
+        let link = link
+        Button(link.title) { if let follow = link.follow { grid.onFollow?(follow) } }
+            .disabled(link.follow == nil)
+            .accessibilityIdentifier("inspector.link.\(link.outgoing ? "out" : "in").\(link.foreignKey.id)")
     }
 }
 
@@ -182,6 +257,14 @@ struct JSONMore: Component {
 
     var content: some ElementGroup {
         Text(verbatim: "\u{2026} \(count) more").font(size: 12).foregroundColor(.secondary)
+    }
+}
+
+extension InspectorBody {
+    @MainActor static func countBody() {
+        #if DEBUG
+        bodyCount += 1
+        #endif
     }
 }
 

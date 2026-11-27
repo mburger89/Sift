@@ -51,6 +51,8 @@ public final class DatabaseSession {
     /// The grids opened on this session's source, by relation: a grid keeps its sort, filters and pages while the
     /// user looks at another tab. A new source (a reconnect) or a changed relation drops them.
     @ObservationIgnored private var grids: [RelationID: (model: GridModel, relation: RelationInfo)] = [:]
+    /// Called when a grid of this session asks to follow a key; the app model routes it.
+    @ObservationIgnored public var onFollow: (@MainActor (GridFollow) -> Void)?
     /// The SQL editor, made at the first ask and kept for the session (a reconnect keeps its text and history).
     @ObservationIgnored private var editor: QueryEditorModel?
     @ObservationIgnored private let queryHistory: (any QueryHistoryStoring)?
@@ -134,13 +136,21 @@ public final class DatabaseSession {
     public func grid(for id: RelationID) -> GridModel? {
         if let existing = grids[id] { return existing.model }
         guard let relation = snapshot?.relation(id), let gridSource = gridSource(for: id) else { return nil }
-        let model = GridModel(source: gridSource, clock: clock)
+        let model = GridModel(
+            source: gridSource, clock: clock, initialQuery: GridQuery(sort: RecencyColumns.defaultSort(for: relation)))
+        model.recencySorts = RecencyColumns.candidates(for: relation).map { RecencyColumns.newestSort(column: $0, in: relation) }
+        model.defaultNewestColumn = RecencyColumns.defaultColumn(for: relation)
         if let current = source {
             model.onConnectionLost = { [weak self] error in _ = self?.noticeLoss(error, of: current) }
         }
+        model.links = snapshot.map { GridLinks(snapshot: $0, relation: id) }
+        model.onFollow = { [weak self] follow in self?.onFollow?(follow) }
         grids[id] = (model, relation)
         return model
     }
+
+    /// The grid of a relation if one is open; never makes one.
+    public func existingGrid(for id: RelationID) -> GridModel? { grids[id]?.model }
 
     // MARK: The SQL editor
 
@@ -187,11 +197,20 @@ public final class DatabaseSession {
             _ = noticeLoss(error, of: source)
             return
         }
-        // A relation whose structure changed starts its grid again; the others keep theirs.
-        for (id, grid) in grids where snapshot?.relation(id) != grid.relation {
-            grid.model.close()
-            grids[id] = nil
+        // A relation whose structure changed starts its grid again; the others keep theirs. Only the structure counts:
+        // `reltuples` moves on its own, and a grid dropped for it would lose its highlight, sort and cursor. A kept
+        // grid's pager keeps the estimate it was made with (it is stale until the grid is reopened); the stored
+        // relation is current.
+        for (id, grid) in grids {
+            if let current = snapshot?.relation(id), current.sameStructure(as: grid.relation) {
+                grids[id] = (grid.model, current)
+            } else {
+                grid.model.close()
+                grids[id] = nil
+            }
         }
+        // The keys can change with no change to the relation itself (another table added a reference).
+        if let snapshot { for (id, grid) in grids { grid.model.links = GridLinks(snapshot: snapshot, relation: id) } }
         for id in rows.keys.sorted() { await loadRows(id, force: true) }
     }
 

@@ -1,0 +1,490 @@
+import Foundation
+import Observation
+import SiftCore
+import SiftTestSupport
+import Testing
+
+@testable import SiftKit
+
+/// Refresh, change marks and newest-first in `GridModel`, over a fake source.
+@MainActor
+struct GridChangesTests {
+    func settle(_ what: String = "condition", _ condition: () -> Bool) async throws {
+        for _ in 0..<3000 where !condition() { await Task.yield() }
+        if !condition() { throw GridTestError.timedOut(what) }
+    }
+
+    func source(rows: Int = 50, changed: Set<Int> = []) -> FakeGridSource {
+        let s = FakeGridSource(trueCount: rows)
+        s.supportsChanges = true
+        s.keyColumns = [0]
+        s.setChanged(changed)
+        return s
+    }
+
+    /// A model whose opening marker and first page have landed.
+    func opened(_ source: FakeGridSource, initialQuery: GridQuery = GridQuery()) async throws -> GridModel {
+        let model = GridModel(source: source, initialQuery: initialQuery)
+        try await settle("idle") { !model.isLoading && model.count != .estimated(0) }
+        _ = model.value(row: 0, column: 0)
+        try await settle("page 0") { model.cachedPages == [0] }
+        try await settle("idle") { !model.isLoading }
+        return model
+    }
+
+    func refreshed(_ model: GridModel, _ source: FakeGridSource, markers: Int) async throws {
+        model.refresh()
+        try await settle("marker") { source.markerCalls == markers }
+        try await settle("idle") { !model.isLoading }
+        _ = model.value(row: 0, column: 0)
+        try await settle("page") { model.cachedPages.contains(0) && !model.isLoading }
+    }
+
+    @Test func openingTakesAMarkerBeforeTheFirstPage() async throws {
+        let source = source()
+        source.holdsMarkers = true
+        let model = GridModel(source: source)
+        _ = model.value(row: 0, column: 0)
+        try await settle("marker call") { source.markerCalls == 1 }
+        for _ in 0..<50 { await Task.yield() }
+        #expect(source.calls == [.marker], "nothing else starts while the marker is out: \(source.calls)")
+        source.releaseAll()
+        try await settle("page 0") { model.cachedPages == [0] }
+        guard case .marker = source.calls[0] else { Issue.record("marker first: \(source.calls)"); return }
+        let pageAt = source.calls.firstIndex { if case .page = $0 { true } else { false } }
+        #expect(pageAt != nil && pageAt! > 0)
+    }
+
+    @Test func refreshTakesAMarkerThenReadsWithChangesSinceThePreviousOne() async throws {
+        let source = source(changed: [3])
+        source.setMarkers(["10", "20", "30"])
+        let model = try await opened(source)
+        #expect(model.query.changes == nil)
+        try await refreshed(model, source, markers: 2)
+        #expect(model.query.changes == ChangeFilter(since: "10"))
+        #expect(model.changesSince != nil)
+        try await refreshed(model, source, markers: 3)
+        #expect(model.query.changes == ChangeFilter(since: "20"))
+        // Every look reads after its own marker: a read under `since` M1 comes after the marker that is taken at that
+        // refresh (the second for "10", the third for "20"), never before it.
+        let markerIndexes = source.calls.indices.filter { source.calls[$0] == .marker }
+        #expect(markerIndexes.count == 3)
+        for (at, call) in source.calls.enumerated() {
+            switch call {
+            case .page(_, _, let query, _), .count(let query):
+                if query.changes?.since == "10" { #expect(at > markerIndexes[1], "since 10 read before marker 2: \(source.calls)") }
+                if query.changes?.since == "20" { #expect(at > markerIndexes[2], "since 20 read before marker 3: \(source.calls)") }
+                if query.changes == nil { #expect(at > markerIndexes[0] && at < markerIndexes[1]) }
+            default: break
+            }
+        }
+        let last = try #require(source.pageCalls.last)
+        #expect(last.query.changes?.since == "20")
+    }
+
+    @Test func flaggedRowsAreMarkedAndUnflaggedAreNot() async throws {
+        let source = source(changed: [2, 5])
+        let model = try await opened(source)
+        try await refreshed(model, source, markers: 2)
+        #expect(model.mark(row: 2) != nil)
+        #expect(model.mark(row: 5) != nil)
+        #expect(model.mark(row: 3) == nil)
+        #expect(model.mark(row: 1000) == nil)
+    }
+
+    @Test func aChangedRowWithAKnownKeyMarksOnlyItsChangedCells() async throws {
+        let source = source(changed: [2])
+        let model = try await opened(source)
+        source.setValue(.text("new"), row: 2, column: 3)
+        source.setValue(.text("new"), row: 2, column: 1)
+        try await refreshed(model, source, markers: 2)
+        #expect(model.mark(row: 2) == .changed(cells: [1, 3]))
+    }
+
+    @Test func aFlaggedRowWithNoCopyIsNewOrChanged() async throws {
+        let source = source(rows: 50, changed: [2, 49])
+        source.setChanged([2, 60])
+        source.trueCount = 50
+        let model = try await opened(source)
+        source.trueCount = 61
+        source.setChanged([2, 60])
+        try await refreshed(model, source, markers: 2)
+        // Row 2 had a copy and is unchanged: a changed row with no cells (a no-op update).
+        #expect(model.mark(row: 2) == .changed(cells: []))
+        _ = model.value(row: 60, column: 0)
+        try await settle("page 0 still") { model.cachedPages.contains(0) }
+        // Row 60 is in page 0 only because the count is 61 and the page holds 500: it has no old copy.
+        #expect(model.mark(row: 60) == .newOrChanged)
+    }
+
+    @Test func noKeyColumnsMeansRowMarksOnly() async throws {
+        let source = source(changed: [2])
+        source.keyColumns = []
+        let model = try await opened(source)
+        source.setValue(.text("new"), row: 2, column: 1)
+        try await refreshed(model, source, markers: 2)
+        #expect(model.mark(row: 2) == .newOrChanged)
+    }
+
+    @Test func aStaleMarkerAfterClearOrASecondRefreshNeverLands() async throws {
+        let source = source(changed: [1])
+        source.setMarkers(["10", "20", "30", "40"])
+        let model = try await opened(source)
+        source.holdsMarkers = true
+        model.refresh()
+        try await settle("marker 2") { source.markerCalls == 2 }
+        model.refresh()
+        try await settle("marker 3") { source.markerCalls == 3 }
+        // Answer the newer one first, then the superseded one.
+        source.release(callAt: source.calls.count - 1)
+        try await settle("landed") { model.query.changes != nil }
+        #expect(model.query.changes == ChangeFilter(since: "10"))
+        source.release(callAt: source.calls.count - 2)
+        for _ in 0..<50 { await Task.yield() }
+        // The superseded marker answered ("30") and was dropped: the look is still the one the newer marker made.
+        #expect(model.query.changes == ChangeFilter(since: "10"))
+        source.holdsMarkers = false
+        try await settle("idle") { !model.isLoading }
+        model.refresh()
+        try await settle("marker 4") { source.markerCalls == 4 }
+        try await settle("next look") { model.query.changes?.since != "10" }
+        // The stale answer did not become the previous marker: the newer one ("20") did.
+        #expect(model.query.changes?.since == "20")
+
+        // Clear while a refresh is pending drops its marker.
+        let source2 = self.source(changed: [1])
+        let model2 = try await opened(source2)
+        source2.holdsMarkers = true
+        model2.refresh()
+        try await settle("marker") { source2.markerCalls == 2 }
+        model2.clearChanges()
+        source2.releaseAll()
+        for _ in 0..<50 { await Task.yield() }
+        #expect(model2.query.changes == nil)
+        #expect(model2.changesSince == nil)
+    }
+
+    @Test func sortAndFilterKeepTheHighlight() async throws {
+        let source = source(changed: [2])
+        let model = try await opened(source)
+        try await refreshed(model, source, markers: 2)
+        var next = model.query
+        next.sort = GridSort(column: 1, ascending: true)
+        model.apply(next)
+        #expect(model.query.changes != nil)
+        next.filters = [GridFilter(column: 1, op: .contains, value: "r")]
+        model.apply(next)
+        #expect(model.query.changes != nil)
+        #expect(model.changesSince != nil)
+        #expect(source.markerCalls == 2)
+    }
+
+    @Test func clearDropsTheHighlight() async throws {
+        let source = source(changed: [2])
+        source.setMarkers(["10", "20", "30"])
+        let model = try await opened(source)
+        try await refreshed(model, source, markers: 2)
+        model.clearChanges()
+        #expect(model.query.changes == nil)
+        #expect(model.changesSince == nil)
+        try await settle("page") { model.cachedPages.isEmpty || !model.isLoading }
+        _ = model.value(row: 2, column: 0)
+        try await settle("page 0") { model.cachedPages == [0] }
+        #expect(model.mark(row: 2) == nil)
+        // The marker is kept: the next refresh covers everything since the last look.
+        try await refreshed(model, source, markers: 3)
+        #expect(model.query.changes?.since == "20")
+    }
+
+    @Test func onlyChangesNarrowsAndRecounts() async throws {
+        let source = source(rows: 50, changed: [2, 7, 9])
+        let model = try await opened(source)
+        try await refreshed(model, source, markers: 2)
+        model.setOnlyChanges(true)
+        #expect(model.query.changes?.only == true)
+        try await settle("count") { model.count == .exact(3) }
+        _ = model.value(row: 0, column: 0)
+        try await settle("page") { model.cachedPages == [0] }
+        #expect(model.value(row: 1, column: 0) == .int(7))
+        model.setOnlyChanges(false)
+        try await settle("count") { model.count == .exact(50) }
+    }
+
+    @Test func anUnsupportedSourceRefreshesWithoutMarkers() async throws {
+        let source = FakeGridSource(trueCount: 50)
+        let model = try await opened(source)
+        let before = source.pageCalls.count
+        let countsBefore = source.calls.filter { if case .count = $0 { true } else { false } }.count
+        model.refresh()
+        try await settle("reread") { source.pageCalls.count == before + 1 || (model.isLoading == false && model.cachedPages.isEmpty) }
+        _ = model.value(row: 0, column: 0)
+        try await settle("page") { source.pageCalls.count == before + 1 && model.cachedPages == [0] }
+        try await settle("counted") { source.calls.filter { if case .count = $0 { true } else { false } }.count == countsBefore + 1 }
+        #expect(source.markerCalls == 0)
+        #expect(model.query.changes == nil)
+        #expect(model.changesSince == nil)
+    }
+
+    @Test func theTrailingFlagNeverReachesValueReads() async throws {
+        let source = source(changed: [2])
+        let model = try await opened(source)
+        try await refreshed(model, source, markers: 2)
+        for c in 0..<5 { #expect(model.value(row: 2, column: c) != nil) }
+        #expect(model.value(row: 2, column: 5) == nil)
+        #expect(model.value(row: 2, column: 1) == .text("r2c1"))
+        #expect(model.columns.count == 5)
+    }
+
+    @Test func markReadsNoObservableState() async throws {
+        let source = source(changed: [2])
+        let model = try await opened(source)
+        try await refreshed(model, source, markers: 2)
+        let changed = Flag()
+        withObservationTracking {
+            _ = model.mark(row: 2)
+            _ = model.mark(row: 3)
+            _ = model.mark(row: 900)
+        } onChange: { changed.set() }
+        model.refresh()
+        try await settle("marker") { source.markerCalls == 3 }
+        try await settle("idle") { !model.isLoading }
+        #expect(!changed.value, "mark(row:) read observable state")
+    }
+
+    @Test func newestFirstToggleSetsAndClearsTheDescNullsLastSort() async throws {
+        let source = source()
+        let model = GridModel(source: source)
+        let nullable = GridSort(column: 3, ascending: false, nullsLast: true)
+        let notNull = GridSort(column: 0, ascending: false, nullsLast: false)
+        model.recencySorts = [nullable, notNull]
+        #expect(model.recencyColumns == [3, 0])
+        #expect(model.newestColumn == 3)
+        #expect(!model.isNewestFirst)
+        model.setNewestFirst(true)
+        #expect(model.query.sort == nullable)
+        #expect(model.isNewestFirst)
+        model.setNewestColumn(0)
+        #expect(model.query.sort == notNull)
+        #expect(model.newestColumn == 0)
+        model.setNewestFirst(false)
+        #expect(model.query.sort == nil)
+        #expect(!model.isNewestFirst)
+        #expect(model.newestColumn == 0)
+    }
+
+    @Test func aHeaderSortTurnsNewestFirstOff() async throws {
+        let source = source()
+        let newest = GridSort(column: 0, ascending: false, nullsLast: false)
+        let model = GridModel(source: source, initialQuery: GridQuery(sort: newest))
+        model.recencySorts = [newest]
+        #expect(model.isNewestFirst)
+        var next = model.query
+        next.sort = GridSort(column: 1, ascending: true)
+        model.apply(next)
+        #expect(!model.isNewestFirst)
+        next.sort = GridSort(column: 0, ascending: true)
+        model.apply(next)
+        #expect(!model.isNewestFirst)
+    }
+
+    @Test func theSessionOpensACheapRecencyGridNewestFirst() async throws {
+        let customers = RelationID("shop", "customers")
+        let rig = Rig()
+        let key = ConnectionKey.container(name: "shop-db")
+        await rig.model.refreshDiscovery()
+        await rig.model.open(key)
+        let session = try #require(rig.model.sessions[key])
+        #expect(session.existingGrid(for: customers) == nil)
+        let relation = try #require(session.snapshot?.relation(customers))
+        let grid = try #require(session.grid(for: customers))
+        #expect(session.existingGrid(for: customers) === grid)
+        let expected = RecencyColumns.newestSort(column: RecencyColumns.candidates(for: relation)[0], in: relation)
+        #expect(grid.query.sort == expected)
+        #expect(grid.isNewestFirst)
+        #expect(!grid.recencyColumns.isEmpty)
+    }
+
+    @Test func aDiffOfAFullPageCostsOnePassOverIt() async throws {
+        let source = source(rows: 500, changed: Set(0..<500))
+        let model = try await opened(source)
+        for row in 0..<500 { source.setValue(.text("x"), row: row, column: 2) }
+        // The count read for the model's own use before the refresh.
+        let before = model.diffComparisons
+        try await refreshed(model, source, markers: 2)
+        #expect(model.mark(row: 10) == .changed(cells: [2]))
+        let spent = model.diffComparisons - before
+        #expect(spent > 0 && spent <= 500 * model.columns.count, "\(spent)")
+    }
+
+    @Test func aHeldMarkerHoldsBackEveryReadOfTheLook() async throws {
+        let source = source(changed: [2])
+        let model = try await opened(source)
+        source.holdsMarkers = true
+        model.refresh()
+        try await settle("marker") { source.markerCalls == 2 }
+        _ = model.value(row: 600, column: 0)
+        for _ in 0..<100 { await Task.yield() }
+        #expect(source.calls.last == .marker, "a read started before the marker landed: \(source.calls)")
+        source.releaseAll()
+        try await settle("look") { model.query.changes != nil && !model.isLoading }
+    }
+
+    @Test func aServerErrorAfterARefreshRestoresTheMarkerState() async throws {
+        let source = source(changed: [2])
+        source.setMarkers(["10", "20", "30", "40"])
+        let model = try await opened(source)
+        source.setValue(.text("new"), row: 2, column: 1)
+        try await refreshed(model, source, markers: 2)
+        #expect(model.query.changes?.since == "10")
+        #expect(model.mark(row: 2) == .changed(cells: [1]))
+        let shownSince = model.changesSince
+        // The second refresh's re-read is refused by the server.
+        source.holdsMarkers = true
+        model.refresh()
+        try await settle("marker") { source.markerCalls == 3 }
+        source.failNext([SourceError(.server(sqlState: "XX000"), "refused")])
+        source.releaseAll()
+        try await settle("rolled back") { model.error != nil }
+        try await settle("idle") { !model.isLoading }
+        #expect(model.query.changes?.since == "10")
+        #expect(model.changesSince == shownSince)
+        // A page that lands under the restored look still diffs against the copy of the look it goes back to.
+        var resorted = model.query
+        resorted.sort = GridSort(column: 0, ascending: false)
+        model.apply(resorted)
+        _ = model.value(row: 0, column: 0)
+        try await settle("resorted page") { model.cachedPages == [0] && !model.isLoading }
+        #expect(model.mark(row: 47) == .changed(cells: [1]))
+        resorted.sort = nil
+        model.apply(resorted)
+        // The marker "30" was dropped with the rollback: the next refresh still starts at "20".
+        try await refreshed(model, source, markers: 4)
+        #expect(model.query.changes?.since == "20")
+    }
+
+    @Test func aRollbackThenASortThenARefreshBeforeAnyPageHasNoStaleCopy() async throws {
+        let source = source(changed: [2])
+        source.setMarkers(["10", "20", "30", "40"])
+        let model = try await opened(source)
+        source.setValue(.text("new"), row: 2, column: 1)
+        try await refreshed(model, source, markers: 2)
+        #expect(model.mark(row: 2) == .changed(cells: [1]))
+        // The second refresh's re-read is refused: the look rolls back to the first one.
+        source.holdsMarkers = true
+        model.refresh()
+        try await settle("marker") { source.markerCalls == 3 }
+        source.failNext([SourceError(.server(sqlState: "XX000"), "refused")])
+        source.releaseAll()
+        try await settle("rolled back") { model.error != nil }
+        try await settle("idle") { !model.isLoading }
+        source.holdsMarkers = false
+        // A sort drops the pages, and a Refresh follows before any page has landed under it.
+        var resorted = model.query
+        resorted.sort = GridSort(column: 0, ascending: false)
+        model.apply(resorted)
+        model.refresh()
+        try await settle("marker") { source.markerCalls == 4 }
+        try await settle("idle") { !model.isLoading }
+        _ = model.value(row: 0, column: 0)
+        try await settle("page") { model.cachedPages == [0] && !model.isLoading }
+        // The copy the first look installed is two looks old: row 2 (47 here) has no copy, so it is new or changed.
+        #expect(model.mark(row: 47) == .newOrChanged)
+    }
+
+    @Test func aSortWhileTheMarkerIsHeldKeepsTheCopy() async throws {
+        let source = source(changed: [2])
+        let model = try await opened(source)
+        source.setValue(.text("new"), row: 2, column: 1)
+        source.holdsMarkers = true
+        model.refresh()
+        try await settle("marker") { source.markerCalls == 2 }
+        var next = model.query
+        next.sort = GridSort(column: 0, ascending: false)
+        model.apply(next)
+        source.releaseAll()
+        try await settle("look") { model.query.changes != nil && !model.isLoading }
+        _ = model.value(row: 0, column: 0)
+        try await settle("page") { model.cachedPages == [0] && !model.isLoading }
+        // Sorted descending over 50 rows: ordinal 2 is row 47.
+        #expect(model.mark(row: 47) == .changed(cells: [1]))
+    }
+
+    @Test func aPageHeldFromBeforeARefreshNeverLands() async throws {
+        let source = source(changed: [2])
+        let model = GridModel(source: source)
+        try await settle("count") { model.count != .estimated(0) && !model.isLoading }
+        source.holdsPages = true
+        source.holdsMarkers = true
+        _ = model.value(row: 0, column: 0)
+        try await settle("page call") { source.pageCalls.count == 1 }
+        let pageCall = try #require(source.calls.firstIndex { if case .page = $0 { true } else { false } })
+        model.refresh()
+        try await settle("marker call") { source.markerCalls == 2 }
+        let version = model.pagesVersion
+        // Only the stale page answers, while the refresh's marker is still out.
+        source.release(callAt: pageCall)
+        for _ in 0..<100 { await Task.yield() }
+        #expect(model.cachedPages.isEmpty, "a page asked before the refresh landed")
+        #expect(model.pagesVersion == version)
+        source.releaseAll()
+        try await settle("look") { model.query.changes != nil && !model.isLoading }
+    }
+
+    @Test func aKeptCopyThatIsOneLookStaleIsNotUsed() async throws {
+        let source = source(changed: [2])
+        let model = try await opened(source)
+        source.setValue(.text("new"), row: 2, column: 1)
+        try await refreshed(model, source, markers: 2)
+        #expect(model.mark(row: 2) == .changed(cells: [1]))
+        // A sort drops the pages; nothing is cached when the next refresh copies.
+        var next = model.query
+        next.sort = GridSort(column: 0, ascending: false)
+        model.apply(next)
+        try await settle("idle") { !model.isLoading }
+        #expect(model.cachedPages.isEmpty)
+        source.setValue(.text("newer"), row: 2, column: 1)
+        model.refresh()
+        try await settle("marker") { source.markerCalls == 3 }
+        try await settle("idle") { !model.isLoading }
+        _ = model.value(row: 0, column: 0)
+        try await settle("page") { model.cachedPages == [0] && !model.isLoading }
+        #expect(model.mark(row: 47) == .newOrChanged)
+    }
+
+    @Test func clearDoesNotAdoptTheDroppedMarker() async throws {
+        let source = source(changed: [2])
+        source.setMarkers(["10", "20", "30"])
+        let model = try await opened(source)
+        source.holdsMarkers = true
+        model.refresh()
+        try await settle("marker") { source.markerCalls == 2 }
+        model.clearChanges()
+        source.releaseAll()
+        for _ in 0..<50 { await Task.yield() }
+        try await settle("idle") { !model.isLoading }
+        // "20" was answered after the clear and dropped; the look the next refresh compares with is still "10".
+        try await refreshed(model, source, markers: 3)
+        #expect(model.query.changes?.since == "10")
+    }
+
+    @Test func anIdleRefreshWithAnEqualMarkerStillReReads() async throws {
+        let source = source(changed: [2])
+        source.setMarkers(["10", "10", "10"])
+        let model = try await opened(source)
+        let pagesBefore = source.pageCalls.count
+        try await refreshed(model, source, markers: 2)
+        #expect(source.pageCalls.count == pagesBefore + 1)
+        try await refreshed(model, source, markers: 3)
+        #expect(source.pageCalls.count == pagesBefore + 2)
+        #expect(model.query.changes?.since == "10")
+    }
+
+    @Test func aMarkerCancelledByAStrayCancelIsAskedAgain() async throws {
+        let source = source(changed: [2])
+        source.failNext([SourceError(.cancelled, "cancelled")])
+        let model = GridModel(source: source)
+        _ = model.value(row: 0, column: 0)
+        try await settle("page") { model.cachedPages == [0] }
+        #expect(source.markerCalls == 2)
+    }
+}

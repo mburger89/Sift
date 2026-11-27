@@ -19,7 +19,7 @@ import Testing
                     },
                     foreignKeys: s.foreignKeys)
             }
-            let expected = normalised(FixtureSnapshot.shop(schemaA: n.a, schemaB: n.b))
+            let expected = normalised(FixtureSnapshot.shop(schemaA: n.a, schemaB: n.b, withPagerTables: true))
             let actual = normalised(live)
             #expect(actual.schemas == expected.schemas)
             for r in expected.relations {

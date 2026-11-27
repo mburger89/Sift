@@ -64,7 +64,7 @@ let package = Package(
         .testTarget(
             name: "SiftKitTests",
             dependencies: [
-                "SiftKit", "SiftCore", "SiftDocker", "SiftTestSupport",
+                "SiftKit", "SiftCore", "SiftPG", "SiftDocker", "SiftTestSupport",
                 .product(name: "MetalUI", package: "MetalUI"),
                 .product(name: "MetalUITesting", package: "MetalUI"),
                 .product(name: "MetalUIPortableText", package: "MetalUI"),

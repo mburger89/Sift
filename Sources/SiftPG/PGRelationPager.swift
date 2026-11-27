@@ -60,6 +60,16 @@ public final class PGRelationPager: GridSource, @unchecked Sendable {
         }
     }
 
+    public var supportsChanges: Bool { builder.supportsChanges }
+
+    /// The order key's columns, which identify a row across a refresh. A `ctid` or no key has none.
+    public var keyColumns: [Int] {
+        switch builder.keyKind {
+        case .primaryKey, .uniqueNotNull: return builder.orderKey
+        case .ctid, .unordered: return []
+        }
+    }
+
     /// The server process of the connection, once there is one. For tests of cancellation.
     public var backendPID: Int32? { lock.withLock { connection }?.backendPID }
 
@@ -134,6 +144,14 @@ public final class PGRelationPager: GridSource, @unchecked Sendable {
 
     public func page(_ index: Int, size: Int, query: GridQuery, after: [SiftValue]?) async throws -> [[SiftValue]] {
         try await run(builder.pageSQL(index: index, size: size, query: query, after: after), timeout: Self.pageTimeout).rows
+    }
+
+    public func changeMarker() async throws -> String {
+        let result = try await run((PGRelationQuery.markerSQL, []), timeout: Self.countTimeout)
+        guard result.rows.count == 1, result.rows[0].count == 1, case .text(let marker) = result.rows[0][0] else {
+            throw SourceError(.other, "The change marker query returned no single text value")
+        }
+        return marker
     }
 
     public func cancelCurrent() {
