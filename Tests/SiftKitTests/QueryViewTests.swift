@@ -67,9 +67,7 @@ struct QueryViewTests {
         let (_, window, editor, runner) = try await openQuery()
         runner.fallback = Self.rows(5)
         try window.click(window.element(identifier: "query.editor"))
-        window.typeText("select id, name from t;")
-        window.typeKey(.return)
-        window.typeText("select 2;")
+        window.typeText("select id, name from t;\nselect 2;")
         window.typeKey(.upArrow)
         window.typeKey(.return, modifierFlags: .primary)
         try await window.runUntil { editor.result != nil }

@@ -9,7 +9,7 @@ on:
 # does on a developer's machine. It is pinned by SHA: a MetalUI change cannot turn Sift red, and a
 # Sift PR that needs a MetalUI fix bumps this line.
 env:
-  METALUI_REF: 3f1b2bb7e904ba1103a34c507e18d57852abda92
+  METALUI_REF: b07e5bfd8872eeda8bb3ac4a1425911a07dc4515
   SDL_VERSION: 3.4.16
 
 jobs:

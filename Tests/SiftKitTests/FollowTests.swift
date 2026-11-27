@@ -182,6 +182,18 @@ struct FollowTests {
         #expect(!GridTable.cell(o.grid, columns, row, 0, .current, tinted).isLink)
         #expect(!GridTable.cell(o.grid, columns, row, 2, .current, tinted).isLink)
         #expect(GridTable.cell(o.grid, columns, row, 1, .current, tinted) != GridTable.cell(o.grid, columns, row, 1, .current, []))
+        // The pixels: an FK cell draws in the link colour and the others do not.
+        let link = Color(LinkAccent.self).resolve(in: EnvironmentValues())
+        func drawsLink(_ column: Int) throws -> Bool {
+            try o.window.drawnTextColors(in: cell(o.window, 0, column)).contains {
+                let c = $0.toRgba()
+                return abs(c.r - link.red) < 0.01 && abs(c.g - link.green) < 0.01 && abs(c.b - link.blue) < 0.01
+            }
+        }
+        #expect(try !o.window.drawnTextColors(in: cell(o.window, 0, 1)).isEmpty, "control: the FK cell drew text")
+        #expect(try drawsLink(1))
+        #expect(try !drawsLink(0))
+        #expect(try !drawsLink(2))
         // Query results have no links, so no column is tinted.
         let plain = GridModel(source: FakeGridSource(columns: columns, trueCount: 1), clock: ManualClock())
         #expect(GridTable.linkColumns(plain).isEmpty)

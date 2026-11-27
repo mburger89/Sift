@@ -14,7 +14,11 @@ struct GridCell: Component, Equatable {
     var isLink = false
 
     var content: some ElementGroup {
-        GridCellText(text: text, id: id, value: mark?.accessibilityValue, isLink: isLink)
+        if let mark {
+            GridCellText(text: text, id: id, isLink: isLink).accessibilityValue(mark.accessibilityValue)
+        } else {
+            GridCellText(text: text, id: id, isLink: isLink)
+        }
     }
 }
 
@@ -40,41 +44,33 @@ enum CellMark: Equatable {
 struct GridCellText: Component, Equatable {
     let text: CellText?
     let id: String
-    /// What a change mark says; nil leaves the text itself as the cell's value.
-    let value: String?
     var isLink = false
 
     /// The text colour: the link colour in a key column, else the default.
     private var linkColor: Color? { isLink ? Color(LinkAccent.self) : nil }
 
-    /// `text` as the cell's `Text`, carrying `value` when there is one.
-    private func shown(_ text: Text) -> Text {
-        guard let value else { return text }
-        return text.accessibilityValue(value)
-    }
-
     var content: some ElementGroup {
         if let text {
             switch text.style {
             case .null:
-                shown(Text(verbatim: "NULL").font(size: 13).italic().foregroundStyle(.tertiary))
+                Text(verbatim: "NULL").font(size: 13).italic().foregroundStyle(.tertiary)
                     .accessibilityLabel("null").accessibilityIdentifier(id)
             case .empty:
-                shown(Text(verbatim: text.text).font(size: 13).foregroundStyle(.tertiary))
+                Text(verbatim: text.text).font(size: 13).foregroundStyle(.tertiary)
                     .accessibilityLabel("empty").accessibilityIdentifier(id)
             case .number:
-                shown(Text(verbatim: text.text).font(size: 13).foregroundColor(linkColor)).accessibilityIdentifier(id)
+                Text(verbatim: text.text).font(size: 13).foregroundColor(linkColor).accessibilityIdentifier(id)
             case .mono:
-                shown(Text(verbatim: text.text).font(size: 12).monospaced().foregroundColor(linkColor)).accessibilityIdentifier(id)
+                Text(verbatim: text.text).font(size: 12).monospaced().foregroundColor(linkColor).accessibilityIdentifier(id)
             case .enumLabel:
                 Text(verbatim: text.text).font(size: 12).foregroundColor(linkColor)
                     .padding(inset(6, 1))
                     .background(.surfaceSecondary)
                     .cornerRadius(Pixels(8))
                     .accessibilityLabel(text.text).accessibilityIdentifier(id)
-                    .accessibilityValue(value ?? text.text)
+                    .accessibilityValue(text.text)
             case .plain:
-                shown(Text(verbatim: text.text).font(size: 13).foregroundColor(linkColor)).accessibilityIdentifier(id)
+                Text(verbatim: text.text).font(size: 13).foregroundColor(linkColor).accessibilityIdentifier(id)
             }
         } else {
             Text(verbatim: "\u{2026}").font(size: 13).foregroundStyle(.tertiary)
