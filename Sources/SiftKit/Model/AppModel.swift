@@ -176,9 +176,12 @@ public final class AppModel {
     /// Opens the rows a followed key leads to: the target's grid, newest first where it has a recency key, filtered
     /// to the referenced (or referencing) rows, with the cursor on the first of them.
     public func follow(_ follow: GridFollow, in key: ConnectionKey) {
+        // The highlight stays; "only changes" does not (the followed row need not be one that changed).
+        var changes = sessions[key]?.existingGrid(for: follow.target)?.query.changes
+        changes?.only = false
         let query = GridQuery(
             sort: sessions[key]?.snapshot?.relation(follow.target).flatMap(RecencyColumns.defaultSort(for:)),
-            filters: follow.filters, changes: sessions[key]?.existingGrid(for: follow.target)?.query.changes)
+            filters: follow.filters, changes: changes)
         navigate(
             to: key, relation: follow.target, query: query,
             active: GridPosition(row: 0, column: follow.targetColumn))

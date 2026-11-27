@@ -46,6 +46,7 @@ public final class FakeGridSource: GridSource, @unchecked Sendable {
     private var _overrides: [Int: [Int: SiftValue]] = [:]
     private var _trueCount: Int
     private var _countAnswer: RowCount?
+    private var _refreshedEstimate: Int64?
     private var _failures: [SourceError] = []
     private var fixedRows: [[SiftValue]]?
     private var waiting: [Int: CheckedContinuation<Void, Never>] = [:]
@@ -177,8 +178,14 @@ public final class FakeGridSource: GridSource, @unchecked Sendable {
         _ = try await record(.count(query), holds: holdsCounts)
         return lock.withLock {
             if let only = onlyChanged(query) { return .exact(only.count) }
+            if !query.narrows, let _refreshedEstimate { return .estimated(Int(_refreshedEstimate)) }
             return _countAnswer ?? .exact(_trueCount)
         }
+    }
+
+    /// What a pager does with the refreshed relation: an un-narrowed count answers its estimate from then on.
+    public func relationRefreshed(_ relation: RelationInfo) {
+        if case .estimated(let n) = relation.rowEstimate { lock.withLock { _refreshedEstimate = n } }
     }
 
     public func exactCount(for query: GridQuery) async throws -> Int {

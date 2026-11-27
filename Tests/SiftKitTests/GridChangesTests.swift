@@ -362,6 +362,21 @@ struct GridChangesTests {
         #expect(model.query.changes?.since == "20")
     }
 
+    @Test func aRefusedLoadWithoutChangesKeepsTheBarWithTheHighlight() async throws {
+        let source = source(changed: [2])
+        let model = try await opened(source)
+        try await refreshed(model, source, markers: 2)
+        #expect(model.query.changes != nil && model.changesSince != nil)
+        let shownSince = model.changesSince
+        // A load with no changes reaches the highlighted grid and the server refuses it.
+        source.failNext([SourceError(.server(sqlState: "XX000"), "refused")])
+        model.load(GridQuery(filters: [GridFilter(column: 0, op: .eq, value: "2")]))
+        try await settle("rolled back") { model.error != nil }
+        try await settle("idle") { !model.isLoading }
+        #expect(model.query.changes != nil, "the rollback lost the highlight")
+        #expect(model.changesSince == shownSince, "the highlight came back without its bar")
+    }
+
     @Test func aRollbackThenASortThenARefreshBeforeAnyPageHasNoStaleCopy() async throws {
         let source = source(changed: [2])
         source.setMarkers(["10", "20", "30", "40"])

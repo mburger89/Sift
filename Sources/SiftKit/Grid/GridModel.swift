@@ -246,14 +246,25 @@ public final class GridModel {
     /// **Invariant: `changesSince != nil` exactly when `query.changes != nil`.** The bar and the highlight are one
     /// thing. A query with no `changes` clears `changesSince` and the key copy; an incoming `changes` is dropped when
     /// the grid has no `changesSince` (a follow or Back carrying a filter from a look this grid no longer has). Only a
-    /// refresh's own marker starts a look (`startsLook`), and sets `changesSince` right after.
+    /// refresh's own marker starts a look (`startsLook`), and sets `changesSince` right after. Any other incoming `changes`
+    /// keeps its `only` and takes the grid's current marker.
     private func reload(_ query: GridQuery, keepSelection: Bool, recount: Bool = false, startsLook: Bool = false) {
         var query = query
+        // Taken first: the invariant's own mutations below must not be in what a rollback goes back to.
+        if previous == nil { previous = Snapshot(
+                query: self.query, pages: pages, count: count, marks: marks, previousMarker: previousMarker,
+                previousMarkerTime: previousMarkerTime, changesSince: changesSince, keyCopy: keyCopy,
+                keyCopyServed: keyCopyServed) }
         if query.changes == nil {
             changesSince = nil
             keyCopy = [:]
         } else if changesSince == nil, !startsLook {
             query.changes = nil
+        } else if !startsLook, var shown = self.query.changes {
+            // An incoming filter keeps its `only` but takes this grid's current marker: Back must not put an older
+            // look's marker under the newer `changesSince` and key copy.
+            shown.only = query.changes?.only ?? shown.only
+            query.changes = shown
         }
         retriedMarkerAfterCancel = false
         if inFlight != nil {
@@ -261,10 +272,6 @@ public final class GridModel {
             inFlight = nil
         }
         generation += 1
-        if previous == nil { previous = Snapshot(
-                query: self.query, pages: pages, count: count, marks: marks, previousMarker: previousMarker,
-                previousMarkerTime: previousMarkerTime, changesSince: changesSince, keyCopy: keyCopy,
-                keyCopyServed: keyCopyServed) }
         let narrowed =
             query.filters != self.query.filters || query.search != self.query.search
             || query.changes?.only != self.query.changes?.only || (recount && query.changes?.only == true)

@@ -15,7 +15,9 @@ public final class PGRelationPager: GridSource, @unchecked Sendable {
     public static let countThreshold = 1_000_000
 
     public let columns: [ResultColumn]
-    private let relation: RelationInfo
+    /// The relation's row estimate, which `relationRefreshed` updates: a count of an un-narrowed query on a big
+    /// table answers it. Under `lock`. The columns and the order key never change for a kept grid (same structure).
+    private var rowEstimate: RowEstimate
     private let builder: PGRelationQuery
 
     private let lock = NSLock()
@@ -29,7 +31,7 @@ public final class PGRelationPager: GridSource, @unchecked Sendable {
     public init(connection: PGConnection, relation: RelationInfo) {
         self.connection = connection
         self.parameters = nil
-        self.relation = relation
+        self.rowEstimate = relation.rowEstimate
         let key = PGRelationQuery.orderKey(for: relation)
         self.builder = PGRelationQuery(relation: relation, orderKey: key.columns, keyKind: key.kind)
         self.columns = Self.resultColumns(of: relation)
@@ -40,7 +42,7 @@ public final class PGRelationPager: GridSource, @unchecked Sendable {
         var p = parameters
         p.readOnly = true
         self.parameters = p
-        self.relation = relation
+        self.rowEstimate = relation.rowEstimate
         let key = PGRelationQuery.orderKey(for: relation)
         self.builder = PGRelationQuery(relation: relation, orderKey: key.columns, keyKind: key.kind)
         self.columns = Self.resultColumns(of: relation)
@@ -121,7 +123,7 @@ public final class PGRelationPager: GridSource, @unchecked Sendable {
 
     public func count(for query: GridQuery) async throws -> RowCount {
         var estimate: Int?
-        if case .estimated(let n) = relation.rowEstimate { estimate = Int(n) }
+        if case .estimated(let n) = lock.withLock({ rowEstimate }) { estimate = Int(n) }
         if !query.narrows, let estimate, estimate >= Self.countThreshold { return .estimated(estimate) }
         do {
             return .exact(try await exactNumber(builder.countSQL(query: query), timeout: Self.countTimeout))
@@ -130,6 +132,10 @@ public final class PGRelationPager: GridSource, @unchecked Sendable {
             if !query.narrows, let estimate, estimate > 0 { return .estimated(estimate) }
             return .estimated(GridPaging.pageSize)
         }
+    }
+
+    public func relationRefreshed(_ relation: RelationInfo) {
+        lock.withLock { rowEstimate = relation.rowEstimate }
     }
 
     public func exactCount(for query: GridQuery) async throws -> Int {
