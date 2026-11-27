@@ -238,6 +238,23 @@ struct GridChangesViewTests {
         #expect(window.hasElement(identifier: "grid.changes.since"))
     }
 
+    @Test func aFollowIntoAnOnlyChangesGridKeepsTheHighlightButShowsAllRows() async throws {
+        let src = source(changed: [2])
+        let (rig, window, model) = try await open(src)
+        try await refresh(window, model, src, markers: 2)
+        model.setOnlyChanges(true)
+        try await window.runUntil { model.query.changes?.only == true && model.cachedPages.contains(0) && !model.isLoading }
+        // The followed row is not among the changed ones: "only changes" would land on nothing.
+        src.setChanged([])
+        rig.model.follow(selfFollow(), in: key)
+        try await window.runUntil { model.query.filters.count == 1 && model.cachedPages.contains(0) && !model.isLoading }
+        try await window.runUntilIdle()
+        #expect(model.query.changes != nil, "the follow dropped the highlight")
+        #expect(model.query.changes?.only == false, "the follow carried only-changes")
+        #expect(model.count.value > 0)
+        #expect(model.value(row: 0, column: 0) != nil, "the followed row is missing")
+    }
+
     @Test func backIntoAGridWhoseChangesWereClearedShowsNeitherAHighlightNorABar() async throws {
         let src = source(changed: [2])
         let (rig, window, model) = try await open(src)
