@@ -255,6 +255,25 @@ struct GridChangesViewTests {
         #expect(model.value(row: 0, column: 0) != nil, "the followed row is missing")
     }
 
+    @Test func backAfterARefreshRestoresTheCurrentMarkerNotTheOlderOne() async throws {
+        let src = source(changed: [2])
+        src.setMarkers(["10", "20", "30", "40"])
+        let (rig, window, model) = try await open(src)
+        try await refresh(window, model, src, markers: 2)
+        #expect(model.query.changes?.since == "10")
+        rig.model.follow(selfFollow(), in: key)
+        try await window.runUntil { model.query.filters.count == 1 && model.cachedPages.contains(0) && !model.isLoading }
+        try await window.runUntilIdle()
+        try await refresh(window, model, src, markers: 3)
+        #expect(model.query.changes?.since == "20")
+        let newer = try #require(model.changesSince)
+        rig.model.goBack()
+        try await window.runUntil { model.query.filters.isEmpty && model.cachedPages.contains(0) && !model.isLoading }
+        try await window.runUntilIdle()
+        #expect(model.query.changes?.since == "20", "Back restored the older marker: \(String(describing: model.query.changes))")
+        #expect(model.changesSince == newer)
+    }
+
     @Test func backIntoAGridWhoseChangesWereClearedShowsNeitherAHighlightNorABar() async throws {
         let src = source(changed: [2])
         let (rig, window, model) = try await open(src)
