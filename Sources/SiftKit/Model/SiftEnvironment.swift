@@ -11,11 +11,13 @@ public struct SiftEnvironment: Sendable {
     public var clock: any SiftClock
     /// Where dragged tables' positions are remembered, per database.
     public var mapPositions: any MapPositionsStoring
+    /// Where each connection's query history is kept: the only place SQL text is stored.
+    public var queryHistory: any QueryHistoryStoring
 
     public init(
         connections: any ConnectionStoring, credentials: any CredentialStore, discovery: any DockerDiscovering,
         connector: any DatabaseConnecting, clock: any SiftClock,
-        mapPositions: any MapPositionsStoring
+        mapPositions: any MapPositionsStoring, queryHistory: any QueryHistoryStoring
     ) {
         self.connections = connections
         self.credentials = credentials
@@ -23,6 +25,7 @@ public struct SiftEnvironment: Sendable {
         self.connector = connector
         self.clock = clock
         self.mapPositions = mapPositions
+        self.queryHistory = queryHistory
     }
 
     /// The real thing: the app's support directory, in-memory passwords, Docker or OrbStack, libpq.
@@ -32,6 +35,6 @@ public struct SiftEnvironment: Sendable {
         return SiftEnvironment(
             connections: ConnectionStore(directory: directory), credentials: InMemoryCredentialStore(),
             discovery: DockerDiscovery(), connector: PGConnector(), clock: SystemClock(),
-            mapPositions: MapPositionsStore(directory: directory))
+            mapPositions: MapPositionsStore(directory: directory), queryHistory: QueryHistoryStore(directory: directory))
     }
 }

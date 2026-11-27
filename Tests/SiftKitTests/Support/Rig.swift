@@ -56,6 +56,7 @@ struct Rig {
     let connectionStore: InMemoryConnectionStore
     let credentials: InMemoryCredentialStore
     let mapPositions: InMemoryMapPositionsStore
+    let queryHistory: InMemoryQueryHistoryStore
     let sources: [FakeSource]
 
     init(
@@ -70,10 +71,11 @@ struct Rig {
         connectionStore = InMemoryConnectionStore(saved)
         credentials = InMemoryCredentialStore()
         mapPositions = InMemoryMapPositionsStore()
+        queryHistory = InMemoryQueryHistoryStore()
         model = AppModel(
             environment: SiftEnvironment(
                 connections: connectionStore, credentials: credentials, discovery: discovery, connector: connector,
-                clock: clock, mapPositions: mapPositions))
+                clock: clock, mapPositions: mapPositions, queryHistory: queryHistory))
         if started { model.start() }
     }
 

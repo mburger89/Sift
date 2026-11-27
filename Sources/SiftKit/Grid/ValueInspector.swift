@@ -75,7 +75,7 @@ struct InspectorValue: Component {
         case nil:
             Text("\u{2026}").foregroundColor(.secondary).accessibilityIdentifier("inspector.value")
         case .null?:
-            Text(verbatim: "NULL").italic().foregroundColor(GridPalette.tertiary)
+            Text(verbatim: "NULL").italic().foregroundStyle(.tertiary)
                 .accessibilityLabel("null").accessibilityIdentifier("inspector.value")
         case .some(let value):
             let raw = CellFormat.rawText(value)

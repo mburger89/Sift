@@ -11,12 +11,7 @@ struct MapToolbar: Component {
         let map = map
         let model = model
         HStack(spacing: Pixels(8)) {
-            Picker("View", selection: Binding(get: { model.detailMode }, set: { model.setDetailMode($0) })) {
-                Text("Table").tag(DetailMode.table)
-                Text("Map").tag(DetailMode.map)
-            }
-            .pickerStyle(.segmented)
-            .accessibilityIdentifier("map.mode")
+            DetailModePicker(model: model, identifier: "map.mode").equatable()
             TextField("Find a table", text: Binding(get: { map.search }, set: { map.search = $0 }))
                 .focused(focus)
                 .onSubmit { map.flyToBestMatch() }

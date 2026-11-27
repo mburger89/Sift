@@ -1,11 +1,6 @@
 import MetalUI
 import SiftCore
 
-/// The colours of the grid. MetalUI has no tertiary label colour, so it is the secondary one made fainter.
-enum GridPalette {
-    static let tertiary = Color.secondary.opacity(0.6)
-}
-
 /// One cell: a single line of read-only `Text` (it truncates, TBL-K), styled by `CellText`. A cell whose page is not
 /// loaded draws a faint placeholder. Equatable, so a cell whose text did not change is not rebuilt.
 struct GridCell: Component, Equatable {
@@ -17,10 +12,10 @@ struct GridCell: Component, Equatable {
         if let text {
             switch text.style {
             case .null:
-                Text(verbatim: "NULL").font(size: 13).italic().foregroundColor(GridPalette.tertiary)
+                Text(verbatim: "NULL").font(size: 13).italic().foregroundStyle(.tertiary)
                     .accessibilityLabel("null").accessibilityIdentifier(id)
             case .empty:
-                Text(verbatim: text.text).font(size: 13).foregroundColor(GridPalette.tertiary)
+                Text(verbatim: text.text).font(size: 13).foregroundStyle(.tertiary)
                     .accessibilityLabel("empty").accessibilityIdentifier(id)
             case .number:
                 Text(verbatim: text.text).font(size: 13).accessibilityIdentifier(id)
@@ -36,7 +31,7 @@ struct GridCell: Component, Equatable {
                 Text(verbatim: text.text).font(size: 13).accessibilityIdentifier(id)
             }
         } else {
-            Text(verbatim: "\u{2026}").font(size: 13).foregroundColor(GridPalette.tertiary)
+            Text(verbatim: "\u{2026}").font(size: 13).foregroundStyle(.tertiary)
                 .accessibilityLabel("loading").accessibilityIdentifier(id)
         }
     }

@@ -57,6 +57,8 @@ public struct PGConnectionParameters: Sendable, Equatable, CustomStringConvertib
             ("host", host), ("port", String(port)), ("dbname", database), ("user", user),
             ("sslmode", sslMode.rawValue), ("connect_timeout", String(connectTimeoutSeconds)),
             ("application_name", applicationName),
+            // Sift decodes every value as UTF-8, and an error's position is then a count of characters.
+            ("client_encoding", "UTF8"),
         ]
         if let password { out.append(("password", password.reveal())) }
         if readOnly { out.append(("options", "-c default_transaction_read_only=on")) }

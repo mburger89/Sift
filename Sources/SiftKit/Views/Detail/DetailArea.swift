@@ -6,7 +6,12 @@ struct DetailArea: Component {
 
     var content: some ElementGroup {
         VStack(alignment: .leading, spacing: 0) {
-            if let draft = model.draft {
+            // The Query tab is first: it holds the deepest tree (the grid under a split), and every `else if` before it is a level
+            // of stack. A connection that cannot run SQL yet (not ready) has no editor and falls through to its own detail.
+            if model.draft == nil, model.detailMode == .query, let key = model.selection?.connection,
+               let session = model.sessions[key], let editor = session.queryEditor() {
+                QueryDetailView(model: model, key: key, session: session, editor: editor)
+            } else if let draft = model.draft {
                 ConnectionFormView(model: model, draft: draft)
             } else if model.detailMode == .map, let key = model.selection?.connection,
                       let session = model.sessions[key], session.snapshot != nil {

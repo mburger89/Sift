@@ -8,6 +8,8 @@ public func installSiftCommands(on app: App, model: AppModel) {
         CommandGroup(after: .newItem) {
             Button("New Connection") { model.beginNewConnection() }
                 .keyboardShortcut("n")
+            Button("New Query") { model.openQuery() }
+                .keyboardShortcut("t")
             Button("Refresh") { Task { @MainActor in await model.refresh() } }
                 .keyboardShortcut("r")
         }

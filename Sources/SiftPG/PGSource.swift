@@ -7,6 +7,8 @@ public final class PGSource: DatabaseSource, @unchecked Sendable {
     private let parameters: PGConnectionParameters?
     private let gridLock = NSLock()
     private var grids: [PGRelationPager] = []
+    private var runner: PGQueryRunner?
+    private var closed = false
 
     private init(connection: PGConnection, parameters: PGConnectionParameters?) {
         self.connection = connection
@@ -70,11 +72,13 @@ public final class PGSource: DatabaseSource, @unchecked Sendable {
     public var isBroken: Bool { connection.isBroken }
 
     public func close() {
-        let open = gridLock.withLock { () -> [PGRelationPager] in
-            defer { grids = [] }
-            return grids
+        let (open, editorRunner) = gridLock.withLock { () -> ([PGRelationPager], PGQueryRunner?) in
+            closed = true
+            defer { grids = []; runner = nil }
+            return (grids, runner)
         }
         for grid in open { grid.close() }
+        editorRunner?.close()
         connection.close()
     }
 
@@ -85,6 +89,19 @@ public final class PGSource: DatabaseSource, @unchecked Sendable {
         let pager = PGRelationPager(parameters: parameters, relation: relation)
         gridLock.withLock { grids.append(pager) }
         return pager
+    }
+
+    /// The SQL editor's runner: a third connection of its own, opened at its first run. One per source; it closes with it.
+    public func queryRunner() -> (any QueryRunning)? {
+        guard let parameters else { return nil }
+        return gridLock.withLock {
+            // After `close()` there is no runner, so no connection is ever opened for one.
+            if closed { return nil }
+            if let runner { return runner }
+            let made = PGQueryRunner(parameters: parameters)
+            runner = made
+            return made
+        }
     }
 
     static func map(_ e: PGError) -> SourceError {

@@ -51,15 +51,22 @@ public final class DatabaseSession {
     /// The grids opened on this session's source, by relation: a grid keeps its sort, filters and pages while the
     /// user looks at another tab. A new source (a reconnect) or a changed relation drops them.
     @ObservationIgnored private var grids: [RelationID: (model: GridModel, relation: RelationInfo)] = [:]
+    /// The SQL editor, made at the first ask and kept for the session (a reconnect keeps its text and history).
+    @ObservationIgnored private var editor: QueryEditorModel?
+    @ObservationIgnored private let queryHistory: (any QueryHistoryStoring)?
+    /// Where the Query tab's split divider is remembered, for as long as the session lasts.
+    @ObservationIgnored public let querySplitStore = SplitSizesStore()
 
+    /// - Parameter queryHistory: where the query history is kept; nil keeps none.
     public init(
         key: ConnectionKey, title: String, connector: any DatabaseConnecting, clock: any SiftClock,
-        targetProvider: @escaping TargetProvider
+        queryHistory: (any QueryHistoryStoring)? = nil, targetProvider: @escaping TargetProvider
     ) {
         self.key = key
         self.title = title
         self.connector = connector
         self.clock = clock
+        self.queryHistory = queryHistory
         self.targetProvider = targetProvider
     }
 
@@ -133,6 +140,25 @@ public final class DatabaseSession {
         }
         grids[id] = (model, relation)
         return model
+    }
+
+    // MARK: The SQL editor
+
+    /// The connection's editor, made at the first ask. Nil when the session has not read its database yet or the source
+    /// cannot run SQL. Its runner is asked at each run, so a reconnect gives it the new connection.
+    public func queryEditor() -> QueryEditorModel? {
+        if let editor { return editor }
+        guard state == .ready, source?.queryRunner() != nil else { return nil }
+        let made = QueryEditorModel(
+            runner: { [weak self] in self?.currentQueryRunner() }, store: queryHistory ?? NoQueryHistory(),
+            identity: queryHistory == nil ? nil : mapIdentity, schema: { [weak self] in self?.snapshot }, clock: clock)
+        editor = made
+        return made
+    }
+
+    private func currentQueryRunner() -> (any QueryRunning)? {
+        guard state == .ready else { return nil }
+        return source?.queryRunner()
     }
 
     private func dropGrids() {
@@ -280,6 +306,8 @@ public final class DatabaseSession {
         reconnectTask?.cancel()
         reconnectTask = nil
         dropGrids()
+        editor?.close()
+        editor = nil
         source?.close()
         source = nil
         state = .stopped
@@ -299,4 +327,10 @@ public final class DatabaseSession {
         }
         return String(describing: error)
     }
+}
+
+/// A history store that keeps nothing: a session made without one.
+private struct NoQueryHistory: QueryHistoryStoring {
+    func load(identity: String) -> [QueryHistoryEntry] { [] }
+    func save(identity: String, entries: [QueryHistoryEntry]) {}
 }

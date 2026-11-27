@@ -14,14 +14,19 @@ struct RelationDetailView: Component {
             VStack(alignment: .leading, spacing: 0) {
                 ConnectionBanner(model: model, key: key)
                 RelationHeader(session: session, relation: relation)
-                Picker("Tab", selection: Binding(get: { model.relationTab }, set: { model.relationTab = $0 })) {
-                    Text("Rows").tag(RelationTab.rows)
-                    Text("Structure").tag(RelationTab.structure)
+                HStack(spacing: Pixels(12)) {
+                    Picker("Tab", selection: Binding(get: { model.relationTab }, set: { model.relationTab = $0 })) {
+                        Text("Rows").tag(RelationTab.rows)
+                        Text("Structure").tag(RelationTab.structure)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: Pixels(220))
+                    .accessibilityIdentifier("detail.tabs")
+                    Button("Query") { model.openQuery() }
+                        .accessibilityIdentifier("detail.query")
+                    Spacer()
                 }
-                .pickerStyle(.segmented)
-                .frame(width: Pixels(220))
                 .padding(inset(16, 4))
-                .accessibilityIdentifier("detail.tabs")
                 if model.relationTab == .structure {
                     ScrollView {
                         VStack(alignment: .leading, spacing: Pixels(16)) {

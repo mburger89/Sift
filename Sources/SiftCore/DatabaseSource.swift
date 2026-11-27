@@ -28,8 +28,12 @@ public protocol DatabaseSource: AnyObject, Sendable {
     /// A grid over `relation`, on a connection of its own so cancelling a grid never cancels a schema refresh,
     /// or nil when the source cannot page rows. The source closes it with itself.
     func gridSource(for relation: RelationInfo) -> (any GridSource)?
+    /// The SQL editor's runner, on a connection of its own (a third beside the schema's and the grid's), opened at its
+    /// first run; or nil when the source cannot run SQL. The source closes it with itself.
+    func queryRunner() -> (any QueryRunning)?
 }
 
 extension DatabaseSource {
     public func gridSource(for relation: RelationInfo) -> (any GridSource)? { nil }
+    public func queryRunner() -> (any QueryRunning)? { nil }
 }

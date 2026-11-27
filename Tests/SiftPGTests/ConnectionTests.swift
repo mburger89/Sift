@@ -20,6 +20,11 @@ import Testing
         #expect(!writable.keywordValues().contains { $0.0 == "options" })
     }
 
+    @Test func theClientEncodingIsUTF8SoPositionsCountCharacters() {
+        let p = PGConnectionParameters(host: "h", database: "d", user: "u")
+        #expect(p.keywordValues().contains { $0.0 == "client_encoding" && $0.1 == "UTF8" })
+    }
+
     @Test func parametersDescriptionHidesThePassword() {
         let p = PGConnectionParameters(host: "h", database: "d", user: "u", password: Secret("s3cret"))
         #expect(!String(describing: p).contains("s3cret"))
