@@ -26,7 +26,7 @@ struct MapSpotlightTests {
         #expect(rig.map.hovered == orderItems)
         _ = try rig.window.element(identifier: "map.scrim")
         #expect(try spotCards(rig.window) == [
-            "map.spot.shop.order_items", "map.spot.shop.orders", "map.spot.shop.products", "map.spot.shop.shipments",
+            "map.spot.shop.order_items", "map.spot.shop.orders", "map.spot.shop.products", "map.spot.shop.shipments"
         ])
         rig.window.hover(at: Point(x: Pixels(5), y: Pixels(5)))  // the sidebar
         try await rig.window.runUntilIdle()
@@ -40,7 +40,9 @@ struct MapSpotlightTests {
         let layout = rig.map.layout!
         let shown = Set(rig.map.culled.nodes)
         let view = rig.map.geometry.visibleCanvasRect(rig.map.viewSize!).inset(by: 20)
-        let hub = shown.filter { view.contains(layout.rect(of: $0).centre) }.max { MapSpotlightLayer.neighbours(of: $0, in: layout).nodes.count < MapSpotlightLayer.neighbours(of: $1, in: layout).nodes.count }!
+        let hub = shown.filter { view.contains(layout.rect(of: $0).centre) }.max {
+            MapSpotlightLayer.neighbours(of: $0, in: layout).nodes.count < MapSpotlightLayer.neighbours(of: $1, in: layout).nodes.count
+        }!
         let spot = MapSpotlightLayer.neighbours(of: hub, in: layout).nodes
         // Not vacuous: more than 20 cards are visible, and the hub has neighbours.
         #expect(shown.count > 20)

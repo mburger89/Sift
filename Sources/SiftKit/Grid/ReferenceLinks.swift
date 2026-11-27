@@ -97,7 +97,8 @@ public struct GridLinks: Sendable {
         }
         let title =
             outgoing
-            ? "\(mine.joined(separator: ", ")) → \(Self.name(target, relativeTo: key.from)) (\(zip(theirs, texts).map { "\($0) = \($1)" }.joined(separator: ", ")))"
+            ? "\(mine.joined(separator: ", ")) → \(Self.name(target, relativeTo: key.from)) "
+                + "(\(zip(theirs, texts).map { "\($0) = \($1)" }.joined(separator: ", ")))"
             : "\(Self.name(target, relativeTo: key.to)).\(theirs.joined(separator: ", ")) (= \(texts.joined(separator: ", ")))"
         guard let first = filters.first else { return disabled(base) }
         return ReferenceLink(

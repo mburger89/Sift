@@ -18,7 +18,8 @@ func siftWindow(model: AppModel, size: Size<Pixels> = siftWindowSize, recordsLay
     #if os(Linux) || os(Windows)
     let resolver = try testFontResolver()
     let window = try TestWindow(size: size, options: options, recordsLayout: recordsLayout,
-                                textSystem: { PortableTextSystem(resolver: resolver) }) { siftRootView(model: model) }
+                                textSystem: { PortableTextSystem(resolver: resolver) },
+                                content: { siftRootView(model: model) })
     #else
     let window = try TestWindow(size: size, options: options, recordsLayout: recordsLayout) { siftRootView(model: model) }
     #endif
@@ -48,10 +49,12 @@ func siftApp(model: AppModel) throws -> (app: TestApp, window: TestWindow) {
 /// Any element tree in a headless window with the same text setup as `siftWindow`.
 @MainActor
 func siftTestWindow<Content: Element>(size: Size<Pixels> = Size(width: Pixels(400), height: Pixels(300)),
-                                      recordsLayout: Bool = true, @ElementBuilder content: @escaping @MainActor () -> Content) throws -> TestWindow {
+                                      recordsLayout: Bool = true,
+                                      @ElementBuilder content: @escaping @MainActor () -> Content) throws -> TestWindow {
     #if os(Linux) || os(Windows)
     let resolver = try testFontResolver()
-    let window = try TestWindow(size: size, recordsLayout: recordsLayout, textSystem: { PortableTextSystem(resolver: resolver) }, content: content)
+    let window = try TestWindow(
+        size: size, recordsLayout: recordsLayout, textSystem: { PortableTextSystem(resolver: resolver) }, content: content)
     #else
     let window = try TestWindow(size: size, recordsLayout: recordsLayout, content: content)
     #endif

@@ -17,7 +17,7 @@ struct FollowTests {
         [
             [.int(1), .int(42), .text("new"), .null],
             [.int(2), .null, .text("new"), .null],
-            [.int(3), .int(43), .text("done"), .null],
+            [.int(3), .int(43), .text("done"), .null]
         ]
     }
 
@@ -25,7 +25,7 @@ struct FollowTests {
         [
             ResultColumn(name: "id", typeOID: 20, typeName: "int8"),
             ResultColumn(name: "email", typeOID: 25, typeName: "text"),
-            ResultColumn(name: "created_at", typeOID: 1184, typeName: "timestamptz"),
+            ResultColumn(name: "created_at", typeOID: 1184, typeName: "timestamptz")
         ]
     }
 
@@ -233,7 +233,7 @@ struct FollowTests {
             columns: [
                 ResultColumn(name: "order_id", typeOID: 20, typeName: "int8"),
                 ResultColumn(name: "product_id", typeOID: 2950, typeName: "uuid"),
-                ResultColumn(name: "qty", typeOID: 23, typeName: "int4"),
+                ResultColumn(name: "qty", typeOID: 23, typeName: "int4")
             ], trueCount: 0)
         o.rig.sources[0].setGrid(empty, for: items)
         try o.window.click(cell(o.window, 0, 0))

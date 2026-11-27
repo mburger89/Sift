@@ -83,7 +83,8 @@ public final class QueryEditorModel {
     @ObservationIgnored private var cancelled = false
     /// Set by `close()`, for good: a run still in flight ends without history, a result or a further statement.
     @ObservationIgnored private var closed = false
-    /// Whether the editor's caret blinks while it has the focus; tests turn it off so a focused idle editor draws nothing. Never changes while the app runs.
+    /// Whether the editor's caret blinks while it has the focus; tests turn it off so a focused idle editor draws nothing.
+    /// Never changes while the app runs.
     public var caretBlink: CodeCaretBlink = .on
     @ObservationIgnored private let schema: @MainActor () -> SchemaSnapshot?
     /// Where the list was computed: accepting an item is honoured only while the buffer and caret are still there.
@@ -373,7 +374,7 @@ public final class QueryEditorModel {
             return false
         default:
             // The editor types, deletes or moves the caret; the list follows once it has.
-            if modifiers.intersection([.primary, .control]).isEmpty { scheduleCompletionRefresh() }
+            if modifiers.isDisjoint(with: [.primary, .control]) { scheduleCompletionRefresh() }
             return false
         }
     }

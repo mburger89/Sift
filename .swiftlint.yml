@@ -1,0 +1,58 @@
+# SwiftLint configuration for Sift.
+# CI runs `swiftlint lint --strict`, so every warning fails the build. Run the same command locally before pushing.
+
+included:
+  - Package.swift
+  - Sources
+  - Tests
+
+excluded:
+  - .build
+  - "**/.build"
+
+disabled_rules:
+  # Sift decodes UTF-8 byte buffers lossily on purpose: the SQL tokenizer works on byte offsets, and Docker or HTTP
+  # bodies are only shown. `String(decoding:as:)` never fails; the optional initialisers this rule prefers would only
+  # add unwraps.
+  - optional_data_string_conversion
+  # MetalUI `content` builders read an observable with `let _ = model.version` to register the dependency. In a result
+  # builder `_ = x` is not a valid statement, so the rule's fix does not compile there.
+  - redundant_discardable_let
+
+identifier_name:
+  # Short names are the house style for `==` sides (`l`, `r`), loop indexes and closure parameters.
+  min_length: 1
+  max_length:
+    warning: 60
+    error: 80
+  allowed_symbols: ["_"]
+
+line_length:
+  warning: 140
+  error: 200
+  ignores_urls: true
+
+large_tuple:
+  warning: 4
+  error: 5
+
+nesting:
+  type_level: 2
+
+# The model types (GridModel, AppModel, QueryEditorModel), the SQL tokenizer and the introspector are state machines
+# reviewed as units. A lint pass does not restructure them; anything still over these limits carries a reasoned
+# `swiftlint:disable:next`.
+type_body_length:
+  warning: 400
+  error: 700
+file_length:
+  warning: 800
+  error: 1200
+  ignore_comment_only_lines: true
+function_body_length:
+  warning: 60
+  error: 120
+cyclomatic_complexity:
+  warning: 15
+  error: 25
+  ignores_case_statements: true

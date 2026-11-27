@@ -10,7 +10,8 @@ public indirect enum JSONNode: Equatable, Sendable {
 
     public static func == (lhs: JSONNode, rhs: JSONNode) -> Bool {
         switch (lhs, rhs) {
-        case (.object(let a), .object(let b)): return a.count == b.count && zip(a, b).allSatisfy { $0.key == $1.key && $0.value == $1.value }
+        case (.object(let a), .object(let b)):
+            return a.count == b.count && zip(a, b).allSatisfy { $0.key == $1.key && $0.value == $1.value }
         case (.array(let a), .array(let b)): return a == b
         case (.string(let a), .string(let b)), (.number(let a), .number(let b)): return a == b
         case (.bool(let a), .bool(let b)): return a == b
@@ -55,7 +56,8 @@ public indirect enum JSONNode: Equatable, Sendable {
         switch self {
         case .object(let members):
             if members.isEmpty { return "{}" }
-            return "{\n" + members.map { "\(inner)\"\($0.key)\": \($0.value.pretty(indent: indent + 2))" }.joined(separator: ",\n") + "\n\(pad)}"
+            let body = members.map { "\(inner)\"\($0.key)\": \($0.value.pretty(indent: indent + 2))" }.joined(separator: ",\n")
+            return "{\n" + body + "\n\(pad)}"
         case .array(let items):
             if items.isEmpty { return "[]" }
             return "[\n" + items.map { "\(inner)\($0.pretty(indent: indent + 2))" }.joined(separator: ",\n") + "\n\(pad)]"

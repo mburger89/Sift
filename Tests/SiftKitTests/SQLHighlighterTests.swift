@@ -131,7 +131,8 @@ struct SQLHighlighterTests {
         #expect(underlined.first == 17..<18)
         #expect(rig.highlighter.errorRow == 0)
         // The style is a wavy red underline.
-        let style = try #require(rig.decorations.highlights(in: 0..<rig.buffer.utf8Count, layer: .diagnostics, owner: SQLHighlighter.owner).first)
+        let style = try #require(
+            rig.decorations.highlights(in: 0..<rig.buffer.utf8Count, layer: .diagnostics, owner: SQLHighlighter.owner).first)
         #expect(rig.decorations.style(style.style).underline == CodeUnderline.wavy(SQLTheme.error))
     }
 

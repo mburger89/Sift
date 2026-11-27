@@ -32,7 +32,7 @@ struct SchemaMapView: Component {
             .clipped()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("map")
-        .onGeometryChange(for: Size<Pixels>.self, of: { $0.size }) { map.setViewSize($0, scale: scale) }
+        .onGeometryChange(for: Size<Pixels>.self, of: { $0.size }, action: { map.setViewSize($0, scale: scale) })
         .onScrollWheel { Self.scroll($0, map, scale: scale) }
         .onContinuousHover(coordinateSpace: .local) { phase in
             switch phase {

@@ -32,7 +32,7 @@ public enum PGSelfCheck {
         ("arr", .raw("{1,2,3}")),
         ("by", .bytes([0xde, 0xad, 0xbe, 0xef])),
         ("nul", .null),
-        ("p", .text("param")),
+        ("p", .text("param"))
     ]
 
     public static func run(_ pg: PGConnection) throws -> Outcome {

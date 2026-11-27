@@ -136,12 +136,15 @@ public struct ContainerDetails: Decodable, Sendable, CustomStringConvertible, Cu
 }
 
 extension ContainerDetails.State {
+    // swiftlint:disable:next force_try - decoding the literal `{}` cannot fail: every field of this type has a default
     static var empty: Self { try! JSONDecoder().decode(Self.self, from: Data("{}".utf8)) }
 }
 extension ContainerDetails.NetworkSettings {
+    // swiftlint:disable:next force_try - decoding the literal `{}` cannot fail: every field of this type has a default
     static var empty: Self { try! JSONDecoder().decode(Self.self, from: Data("{}".utf8)) }
 }
 extension ContainerDetails.HostConfig {
+    // swiftlint:disable:next force_try - decoding the literal `{}` cannot fail: every field of this type has a default
     static var empty: Self { try! JSONDecoder().decode(Self.self, from: Data("{}".utf8)) }
 }
 

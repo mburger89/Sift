@@ -39,7 +39,6 @@ struct QueryCostTests {
         var toolbar = QueryToolbar.bodyCount
         var table = GridTable.bodyCount
         var gridToolbar = GridToolbar.bodyCount
-        init() {}
     }
 
     @Test func typingInALongBufferCostsOnlyTheEditor() async throws {
@@ -60,7 +59,9 @@ struct QueryCostTests {
         let work = total(window)
         // The keystrokes landed and were drawn.
         #expect(editor.buffer.snapshot().text.contains("abcde"))
-        #expect(window.frameWork.count > 0 && work.codeLinesPainted > 0, "frames \(window.frameWork.count) painted \(work.codeLinesPainted)")
+        #expect(
+            window.frameWork.count > 0 && work.codeLinesPainted > 0,
+            "frames \(window.frameWork.count) painted \(work.codeLinesPainted)")
         // Only the editor's leaf did work: no component rebuilt, no grid row realised, and a handful of lines were shaped.
         #expect(after == bodies, "bodies \(bodies) -> \(after)")
         #expect(work.tableRowsRealized == 0, "the grid realised \(work.tableRowsRealized) rows")

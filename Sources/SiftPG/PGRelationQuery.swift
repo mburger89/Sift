@@ -149,7 +149,9 @@ public struct PGRelationQuery: Sendable {
         if let sort = query.sort, relation.columns.indices.contains(sort.column) {
             let column = relation.columns[sort.column]
             let expression = PGIdentifier.quote(column.name)
-            terms.append(Term(sql: expression + suffix(true), expression: expression, rowIndex: sort.column, parameterCast: "", nullable: column.isNullable))
+            terms.append(Term(
+                sql: expression + suffix(true), expression: expression, rowIndex: sort.column, parameterCast: "",
+                nullable: column.isNullable))
             used.insert(sort.column)
         }
         for key in orderKey where !used.contains(key) {
@@ -157,7 +159,9 @@ public struct PGRelationQuery: Sendable {
             terms.append(Term(sql: expression + suffix(false), expression: expression, rowIndex: key, parameterCast: "", nullable: false))
         }
         if keyKind == .ctid {
-            terms.append(Term(sql: "ctid" + suffix(false), expression: "ctid", rowIndex: relation.columns.count, parameterCast: "::tid", nullable: false))
+            terms.append(Term(
+                sql: "ctid" + suffix(false), expression: "ctid", rowIndex: relation.columns.count, parameterCast: "::tid",
+                nullable: false))
         }
         return terms
     }

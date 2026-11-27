@@ -19,7 +19,7 @@ let package = Package(
         .library(name: "SiftPG", targets: ["SiftPG"]),
         .library(name: "SiftDocker", targets: ["SiftDocker"]),
         .library(name: "SiftLayout", targets: ["SiftLayout"]),
-        .executable(name: "siftpg-probe", targets: ["siftpg-probe"]),
+        .executable(name: "siftpg-probe", targets: ["siftpg-probe"])
     ],
     dependencies: [
         .package(name: "MetalUI", path: "../MetalUI", traits: metalUITraits)
@@ -39,7 +39,7 @@ let package = Package(
             name: "SiftKit",
             dependencies: [
                 "SiftCore", "SiftPG", "SiftDocker", "SiftLayout",
-                .product(name: "MetalUI", package: "MetalUI"),
+                .product(name: "MetalUI", package: "MetalUI")
             ]
         ),
         .executableTarget(
@@ -50,7 +50,7 @@ let package = Package(
                 .product(name: "MetalUISDL", package: "MetalUI", condition: .when(platforms: [.linux, .windows])),
                 // On every platform (SG-D): with a platform condition SwiftPM drops their C modules on macOS.
                 .product(name: "MetalUIPortableText", package: "MetalUI"),
-                .product(name: "MetalUISystemFonts", package: "MetalUI"),
+                .product(name: "MetalUISystemFonts", package: "MetalUI")
             ]
         ),
         .executableTarget(name: "siftpg-probe", dependencies: ["SiftPG", "SiftCore"]),
@@ -68,10 +68,10 @@ let package = Package(
                 .product(name: "MetalUI", package: "MetalUI"),
                 .product(name: "MetalUITesting", package: "MetalUI"),
                 .product(name: "MetalUIPortableText", package: "MetalUI"),
-                .product(name: "MetalUISystemFonts", package: "MetalUI"),
+                .product(name: "MetalUISystemFonts", package: "MetalUI")
             ]
         ),
-        .testTarget(name: "SiftLayoutTests", dependencies: ["SiftLayout"]),
+        .testTarget(name: "SiftLayoutTests", dependencies: ["SiftLayout"])
     ],
     swiftLanguageModes: [.v6]
 )

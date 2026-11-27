@@ -154,7 +154,7 @@ struct InspectorValue: Component {
                 .accessibilityLabel("null").accessibilityIdentifier("inspector.value")
         case .some(let value):
             let raw = CellFormat.rawText(value)
-            if (column.typeName == "jsonb" || column.typeName == "json"), let tree = JSONNode.parse(raw) {
+            if column.typeName == "jsonb" || column.typeName == "json", let tree = JSONNode.parse(raw) {
                 VStack(alignment: .leading, spacing: Pixels(2)) {
                     JSONNodeView(node: tree, key: nil, path: "")
                 }

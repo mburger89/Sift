@@ -1,7 +1,6 @@
 import MetalUI
 import MetalUITesting
 import SiftCore
-import SiftKit
 import SiftTestSupport
 import Testing
 

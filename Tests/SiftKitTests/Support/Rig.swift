@@ -31,12 +31,12 @@ func ordersRows() -> ResultPage {
         columns: [
             ResultColumn(name: "id", typeOID: 20, typeName: "bigint"),
             ResultColumn(name: "customer_id", typeOID: 20, typeName: "bigint"),
-            ResultColumn(name: "status", typeOID: 25, typeName: "text"),
+            ResultColumn(name: "status", typeOID: 25, typeName: "text")
         ],
         rows: [
             [.int(1), .int(10), .null],
             [.int(2), .int(11), .text("")],
-            [.int(3), .int(10), .text("done")],
+            [.int(3), .int(10), .text("done")]
         ])
 }
 

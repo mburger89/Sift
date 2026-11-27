@@ -85,7 +85,7 @@ struct MapRenderTests {
         #expect(work.tiles == 0)
         #expect(work.rasterized == 0)
         #expect(work.atlas == 0)
-        
+
     }
 
     @Test func aZoomStepRebuildsNoCard() async throws {

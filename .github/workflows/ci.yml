@@ -13,6 +13,17 @@ env:
   SDL_VERSION: 3.4.16
 
 jobs:
+  # SwiftLint 0.65.1 from its official image: no Swift toolchain, no MetalUI checkout. It is a CLI job and not a SwiftPM
+  # build-tool plugin because the Windows build cannot run the plugin's binary. Run `swiftlint lint --strict` locally.
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        path: Sift
+    - name: SwiftLint
+      run: docker run --rm -v "$PWD/Sift:/work" -w /work ghcr.io/realm/swiftlint:0.65.1 swiftlint lint --strict
+
   macos:
     runs-on: xcode-27
     defaults:

@@ -6,7 +6,7 @@ import Testing
         ResultColumn(name: "id", typeOID: 20, typeName: "int8"),
         ResultColumn(name: "name", typeOID: 25, typeName: "text"),
         ResultColumn(name: "price", typeOID: 1700, typeName: "numeric"),
-        ResultColumn(name: "ok", typeOID: 16, typeName: "bool"),
+        ResultColumn(name: "ok", typeOID: 16, typeName: "bool")
     ]
     static let rows: [[SiftValue]] = [
         [.int(1), .text("pear"), .text("9.50"), .bool(true)],
@@ -14,7 +14,7 @@ import Testing
         [.int(3), .null, .null, .null],
         [.int(4), .text("Apple pie"), .text("10.25"), .bool(true)],
         [.int(5), .text("50%_off"), .text("-3"), .bool(false)],
-        [.int(10), .text("fig"), .text("100"), .bool(true)],
+        [.int(10), .text("fig"), .text("100"), .bool(true)]
     ]
 
     func ids(_ source: QueryResultSource, _ query: GridQuery) async throws -> [Int64] {
@@ -93,7 +93,7 @@ import Testing
 
     @Test func filtersAreAnded() async throws {
         let query = GridQuery(filters: [
-            GridFilter(column: 1, op: .contains, value: "apple"), GridFilter(column: 3, op: .eq, value: "true"),
+            GridFilter(column: 1, op: .contains, value: "apple"), GridFilter(column: 3, op: .eq, value: "true")
         ])
         #expect(try await ids(source(), query) == [4])
     }

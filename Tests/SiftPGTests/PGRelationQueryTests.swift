@@ -17,7 +17,7 @@ import Testing
             id: RelationID("s", "t"), kind: kind,
             columns: [
                 col("id", "bigint"), col("name", "text", null: true), col("created", "timestamptz"),
-                col("we\"ird", "text", null: true), col("b", "text"),
+                col("we\"ird", "text", null: true), col("b", "text")
             ],
             primaryKey: pk.map { KeyConstraint(name: "t_pkey", columns: $0) }, uniqueConstraints: unique, indexes: indexes)
     }
@@ -37,7 +37,8 @@ import Testing
 
         // A unique index over a nullable column is no key, and neither is a partial one.
         let nullable = IndexInfo(name: "n", columns: ["name"], isUnique: true, isPrimary: false, method: "btree", definition: "")
-        let partial = IndexInfo(name: "p", columns: ["id"], isUnique: true, isPrimary: false, method: "btree", predicate: "id > 1", definition: "")
+        let partial = IndexInfo(
+            name: "p", columns: ["id"], isUnique: true, isPrimary: false, method: "btree", predicate: "id > 1", definition: "")
         let none = PGRelationQuery.orderKey(for: Self.relation(pk: nil, indexes: [nullable, partial]))
         #expect(none.columns.isEmpty && none.kind == .ctid)
 
@@ -197,9 +198,11 @@ import Testing
 
     @Test func theDefaultNullsPlacementIsUnchanged() {
         let down = GridQuery(sort: GridSort(column: 1, ascending: false))
-        #expect(Self.query().pageSQL(index: 0, size: 500, query: down, after: nil).sql.contains("ORDER BY \"name\" DESC NULLS FIRST, \"id\" DESC LIMIT 500"))
+        let downSQL = Self.query().pageSQL(index: 0, size: 500, query: down, after: nil).sql
+        #expect(downSQL.contains("ORDER BY \"name\" DESC NULLS FIRST, \"id\" DESC LIMIT 500"))
         let up = GridQuery(sort: GridSort(column: 2))
-        #expect(Self.query().pageSQL(index: 0, size: 500, query: up, after: nil).sql.contains("ORDER BY \"created\" ASC NULLS LAST, \"id\" LIMIT 500"))
+        let upSQL = Self.query().pageSQL(index: 0, size: 500, query: up, after: nil).sql
+        #expect(upSQL.contains("ORDER BY \"created\" ASC NULLS LAST, \"id\" LIMIT 500"))
         let upFirst = GridQuery(sort: GridSort(column: 2, ascending: true, nullsLast: false))
         #expect(Self.query().pageSQL(index: 0, size: 500, query: upFirst, after: nil).sql.contains("\"created\" ASC NULLS FIRST, \"id\""))
     }

@@ -161,7 +161,9 @@ final class MapModel {
             fit(size)
         } else {
             // A resize keeps what is at the centre of the map at the centre.
-            if let old { geometry.panBy((size.width.value - old.width.value) / 2, (size.height.value - old.height.value) / 2, scale: scale) }
+            if let old {
+                geometry.panBy((size.width.value - old.width.value) / 2, (size.height.value - old.height.value) / 2, scale: scale)
+            }
             refreshView()
         }
     }

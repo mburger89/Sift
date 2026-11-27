@@ -21,6 +21,16 @@ public final class FakeGridSource: GridSource, @unchecked Sendable {
     public var orderNote: String? { lock.withLock { _orderNote } }
 
     private let lock = NSLock()
+
+    /// What `page` reads under the lock, so the rest of the page is built outside it.
+    private struct PageState {
+        var only: [Int]?
+        var total: Int
+        var fixed: [[SiftValue]]?
+        var flagged: Bool
+        var changed: Set<Int>
+        var overrides: [Int: [Int: SiftValue]]
+    }
     private var _calls: [Call] = []
     private var _cancelCalls = 0
     private var _closed = false
@@ -192,11 +202,13 @@ public final class FakeGridSource: GridSource, @unchecked Sendable {
 
     public func page(_ index: Int, size: Int, query: GridQuery, after: [SiftValue]?) async throws -> [[SiftValue]] {
         _ = try await record(.page(index: index, size: size, query: query, keyset: after != nil), holds: holdsPages)
-        let (only, total, fixed, flagged, changed, overrides) = lock.withLock {
-            () -> ([Int]?, Int, [[SiftValue]]?, Bool, Set<Int>, [Int: [Int: SiftValue]]) in
+        let pageState = lock.withLock { () -> PageState in
             let only = onlyChanged(query)
-            return (only, only?.count ?? _trueCount, fixedRows, _supportsChanges && query.changes != nil, _changed, _overrides)
+            return PageState(only: only, total: only?.count ?? _trueCount, fixed: fixedRows,
+                             flagged: _supportsChanges && query.changes != nil, changed: _changed, overrides: _overrides)
         }
+        let (only, total, fixed, flagged, changed, overrides) =
+            (pageState.only, pageState.total, pageState.fixed, pageState.flagged, pageState.changed, pageState.overrides)
         let start = index * size
         guard start < total else { return [] }
         return (start..<min(start + size, total)).map { position in

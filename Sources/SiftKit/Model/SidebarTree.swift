@@ -86,7 +86,7 @@ public enum SidebarTree {
         }
         return [
             SidebarNode(id: .savedRoot, title: "Saved", kind: .root, children: saved),
-            SidebarNode(id: .containersRoot, title: "Containers", kind: .root, children: containers),
+            SidebarNode(id: .containersRoot, title: "Containers", kind: .root, children: containers)
         ]
     }
 

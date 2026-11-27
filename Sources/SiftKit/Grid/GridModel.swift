@@ -28,6 +28,7 @@ public enum RowMark: Equatable, Sendable {
 /// page nobody is looking at any more is cancelled on the server (`cancelCurrent()`), and every answer carries the
 /// generation of the query it was asked under, so a superseded answer never lands.
 @Observable @MainActor
+// swiftlint:disable:next type_body_length - GridModel is one state machine reviewed as a unit
 public final class GridModel {
     // MARK: What the view reads
 
@@ -671,6 +672,7 @@ public final class GridModel {
         return .changed(cells: cells)
     }
 
+    // swiftlint:disable:next function_body_length - the generation checks of the failure path stay in one place
     private func failed(_ error: any Error, work: Work, generation mine: Int, serial mineSerial: Int) {
         // A failure nobody waits for (we cancelled it, or a newer query replaced it) is dropped.
         guard finish(serial: mineSerial, generation: mine) else { return pump() }
