@@ -204,6 +204,23 @@ struct GridChangesViewTests {
         #expect(model.mark(row: 2) != nil)
     }
 
+    @Test func aKeptGridCountsWithTheRefreshedEstimate() async throws {
+        let src = source(rows: 2000)
+        let (rig, window, model) = try await open(src)
+        try await refresh(window, model, src, markers: 2)
+        var snapshot = rig.sources[0].schema
+        var relations = snapshot.relations
+        let index = try #require(relations.firstIndex { $0.id == orders })
+        relations[index].rowEstimate = .estimated(7_000_000)
+        snapshot = SchemaSnapshot(
+            serverVersion: snapshot.serverVersion, schemas: snapshot.schemas, relations: relations, foreignKeys: snapshot.foreignKeys)
+        rig.sources[0].schema = snapshot
+        await rig.model.sessions[key]?.refreshSchema()
+        #expect(rig.model.sessions[key]?.existingGrid(for: orders) === model, "the grid was dropped")
+        try await refresh(window, model, src, markers: 3)
+        #expect(model.count == .estimated(7_000_000), "\(model.count)")
+    }
+
     @Test func aChangedStructureStartsTheGridAgain() async throws {
         let src = source(changed: [2])
         let (rig, window, model) = try await open(src)

@@ -174,6 +174,27 @@ import Testing
     }
 
     @Test(.enabled(if: PGFixture.url != nil, gate))
+    func aRefreshedRelationChangesTheEstimateAnUnNarrowedCountAnswers() async throws {
+        try await Self.withPager("big") { _, relation, _, params in
+            var huge = relation
+            huge.rowEstimate = .estimated(5_000_000)
+            let pager = PGRelationPager(parameters: params, relation: huge)
+            defer { pager.close() }
+            let c1 = try await pager.count(for: GridQuery())
+            #expect(c1 == .estimated(5_000_000))
+            huge.rowEstimate = .estimated(8_000_000)
+            pager.relationRefreshed(huge)
+            let c2 = try await pager.count(for: GridQuery())
+            #expect(c2 == .estimated(8_000_000))
+            // A small estimate is counted again, exactly.
+            huge.rowEstimate = .estimated(3)
+            pager.relationRefreshed(huge)
+            let c3 = try await pager.count(for: GridQuery())
+            #expect(c3 == .exact(20000))
+        }
+    }
+
+    @Test(.enabled(if: PGFixture.url != nil, gate))
     func cancelStopsTheServerQuery() async throws {
         try await PGFixture.withGridSchema { schema, params in
             let source = try await PGSource.connect(params)

@@ -199,10 +199,10 @@ public final class DatabaseSession {
         }
         // A relation whose structure changed starts its grid again; the others keep theirs. Only the structure counts:
         // `reltuples` moves on its own, and a grid dropped for it would lose its highlight, sort and cursor. A kept
-        // grid's pager keeps the estimate it was made with (it is stale until the grid is reopened); the stored
-        // relation is current.
+        // grid's source is handed the current relation, so its next un-narrowed count uses the new estimate.
         for (id, grid) in grids {
             if let current = snapshot?.relation(id), current.sameStructure(as: grid.relation) {
+                grid.model.source.relationRefreshed(current)
                 grids[id] = (grid.model, current)
             } else {
                 grid.model.close()

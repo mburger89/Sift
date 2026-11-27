@@ -126,11 +126,15 @@ public protocol GridSource: AnyObject, Sendable {
     func changeMarker() async throws -> String
     /// Releases the connection the source holds, if any.
     func close()
+    /// The relation as the latest schema read has it, handed to a source whose grid was kept across that read (the
+    /// structure is the same; its row estimate may have moved). A source with no use for it ignores it.
+    func relationRefreshed(_ relation: RelationInfo)
 }
 
 extension GridSource {
     public var orderNote: String? { nil }
     public func close() {}
+    public func relationRefreshed(_ relation: RelationInfo) {}
     public var supportsChanges: Bool { false }
     public var keyColumns: [Int] { [] }
     public func changeMarker() async throws -> String {
