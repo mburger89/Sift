@@ -249,6 +249,11 @@ public final class GridModel {
     /// refresh's own marker starts a look (`startsLook`), and sets `changesSince` right after.
     private func reload(_ query: GridQuery, keepSelection: Bool, recount: Bool = false, startsLook: Bool = false) {
         var query = query
+        // Taken first: the invariant's own mutations below must not be in what a rollback goes back to.
+        if previous == nil { previous = Snapshot(
+                query: self.query, pages: pages, count: count, marks: marks, previousMarker: previousMarker,
+                previousMarkerTime: previousMarkerTime, changesSince: changesSince, keyCopy: keyCopy,
+                keyCopyServed: keyCopyServed) }
         if query.changes == nil {
             changesSince = nil
             keyCopy = [:]
@@ -261,10 +266,6 @@ public final class GridModel {
             inFlight = nil
         }
         generation += 1
-        if previous == nil { previous = Snapshot(
-                query: self.query, pages: pages, count: count, marks: marks, previousMarker: previousMarker,
-                previousMarkerTime: previousMarkerTime, changesSince: changesSince, keyCopy: keyCopy,
-                keyCopyServed: keyCopyServed) }
         let narrowed =
             query.filters != self.query.filters || query.search != self.query.search
             || query.changes?.only != self.query.changes?.only || (recount && query.changes?.only == true)
